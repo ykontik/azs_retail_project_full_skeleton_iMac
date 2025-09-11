@@ -1,0 +1,35 @@
+# OS / IDE / Python
+.DS_Store
+.idea/
+.vscode/
+__pycache__/
+.pytest_cache/
+.mypy_cache/
+.venv/
+
+# Local env
+.env
+
+# Streamlit local secrets (avoid committing accidental creds)
+.streamlit/
+
+# Test/coverage artifacts
+htmlcov/
+coverage.xml
+
+# Data and artifacts (keep locally; don’t commit)
+data_raw/
+data_dw/
+models/
+mlruns/
+mlflow.db
+
+# Local backups of models (heavy, keep local only)
+backup_models_*/
+
+# Notebooks
+notebooks/.ipynb_checkpoints/
+
+# Generated slides
+docs/slides.html
+docs/slides.pdf

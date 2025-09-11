@@ -1,0 +1,46 @@
+__pycache__/
+.venv/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+*.egg-info/
+.installed.cfg
+*.egg
+.mypy_cache/
+.pytest_cache/
+htmlcov/
+*.cover
+*.log
+*.tmp
+*.swp
+*.swo
+.DS_Store
+
+# Project data and artifacts
+data_raw/
+data_dw/
+models/
+mlruns/
+mlflow.db
+backup_models_*/
+
+# Streamlit local secrets
+.streamlit/
+
+# Git
+.git/
+.gitignore
+.github/
