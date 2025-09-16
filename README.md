@@ -514,4 +514,4 @@ Makefile
 - Ошибки компиляции: сначала `pip install -U pip setuptools wheel`, затем `pip install -r requirements.txt`.
 - Streamlit не видит API: задайте `API_URL` (например, `export API_URL=http://127.0.0.1:8000`) или укажите в верхнем поле дашборда.
 - «Мало памяти/долго обучается»: уменьшите `TOP_N_SKU`, `TOP_RECENT_DAYS`, `VALID_DAYS` или запустите `make demo` для ускоренного сценария.
-- Docker образ слишком тяжёлый: для чистого API можно вынести UI/SHAP/Optuna в отдельный образ (напишите — покажу пример `Dockerfile` с multi‑stage и split‑requirements).
+- Docker образ слишком тяжёлый: для чистого API можно вынести UI/SHAP/Optuna в отдельный образ.
