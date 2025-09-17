@@ -15,6 +15,7 @@ __pycache__/
 
 # Test/coverage artifacts
 htmlcov/
+.coverage*
 coverage.xml
 
 # Data and artifacts (keep locally; don’t commit)

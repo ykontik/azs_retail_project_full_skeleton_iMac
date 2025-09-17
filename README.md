@@ -1,7 +1,7 @@
 
 # AZS + Retail — Forecast MVP (TL;DR)
 
-Этот README — краткий. Подробности см. в `docs/` и `PRESENTATION_README.md`.
+Этот README — краткий. Подробности см. в `docs/` и `PRESENTATION_CHECKLIST.md`.
 
 Быстрый старт:
 - make venv && make validate && make etl && make features
@@ -10,7 +10,8 @@
 
 Полезные ссылки:
 - Архитектура: docs/ARCHITECTURE.md | Model Card: docs/MODEL_CARD.md
-- Презентация/видео: PRESENTATION_README.md | API: docs/API.md
+- Презентация/видео: PRESENTATION_CHECKLIST.md | API: docs/API.md
+- Colab smoke demo: notebooks/colab_smoke_demo.ipynb (быстрый запуск `make demo`)
 - UI‑страницы: 02__Сравнение_моделей, 05_Error_Leaderboard, 06_Агрегаты_по_времени, 07_Бизнес_метрики
 
 
@@ -56,12 +57,7 @@
    python train_stock.py
    
    ```
-7) Бандлы (если есть `data_raw/baskets.csv`):
-   ```bash
-   
-   python train_bundles.py
-   ```
-8) API + UI:
+7) API + UI:
   ```bash
   uvicorn service.app:app --reload
   streamlit run ui/dashboard.py
@@ -212,7 +208,7 @@ python scripts/export_onnx.py --store 1 --family AUTOMOTIVE --quantize
 - **Техническая документация:** `docs/API.md`
 - **Архитектура:** `docs/ARCHITECTURE.md`
 - **Model Card:** `docs/MODEL_CARD.md`
-- **Презентационный README:** `PRESENTATION_README.md`
+- **Чек-лист презентации:** `PRESENTATION_CHECKLIST.md`
 - **Слайды (10 мин):** `docs/slides.md` → `make slides-html` или `make slides-pdf`
 - **Colab демо:** `notebooks/colab_demo.ipynb` (замените `REPO_URL` и запустите по шагам)
 
