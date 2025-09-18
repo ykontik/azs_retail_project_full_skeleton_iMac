@@ -32,9 +32,9 @@ subtitle: "От данных до продакшена за 10 минут"
 - Промо: значимое влияние на продажи
 - Разная дисперсия по магазинам и семействам
 
-![](eda_seasonality_dow.png)
-![](eda_seasonality_month.png)
-![](eda_promo_effect.png)
+![](docs/eda_seasonality_dow.png)
+![](docs/eda_seasonality_month.png)
+![](docs/eda_promo_effect.png)
 
 ---
 
@@ -86,7 +86,7 @@ subtitle: "От данных до продакшена за 10 минут"
 - UI: Streamlit (лидерборд ошибок, сравнение, прогнозы, ROP/SS)
 - Docker Compose: api+ui, healthchecks
 
-Скриншот Swagger: ![](swagger_screenshot.png)
+Скриншот Swagger: ![](docs/swagger_screenshot.png)
 
 ---
 
@@ -95,7 +95,7 @@ subtitle: "От данных до продакшена за 10 минут"
 - Бенчмарк: latency/память (joblib)
 - ONNX + INT8: экспорт и ускорение CPU‑инференса
 
-Пример SHAP: ![](shap_summary_sample.png)
+Пример SHAP: ![](docs/shap_summary_sample.png)
 
 ---
 
