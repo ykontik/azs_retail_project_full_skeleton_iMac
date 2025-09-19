@@ -36,6 +36,7 @@ subtitle: "От данных до продакшена за 10 минут"
 ![](docs/eda_seasonality_month.png)
 ![](docs/eda_promo_effect.png)
 
+
 ---
 
 ## 4) Feature Engineering
@@ -86,7 +87,8 @@ subtitle: "От данных до продакшена за 10 минут"
 - UI: Streamlit (лидерборд ошибок, сравнение, прогнозы, ROP/SS)
 - Docker Compose: api+ui, healthchecks
 
-Скриншот Swagger: ![](docs/swagger_screenshot.png)
+Скриншот Swagger:
+![](docs/swagger_screenshot.png)
 
 ---
 
