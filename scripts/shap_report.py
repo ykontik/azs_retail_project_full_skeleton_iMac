@@ -27,6 +27,12 @@ except Exception:  # pragma: no cover
 
 from make_features import make_features
 
+def _prepare_categoricals(df: pd.DataFrame, cat_cols: list[str]) -> pd.DataFrame:
+    for c in cat_cols:
+        if c in df.columns:
+            df[c] = df[c].astype("category")
+    return df
+
 
 def parse_args():
     p = argparse.ArgumentParser("SHAP report per-SKU")
@@ -67,6 +73,12 @@ def main():
     if df_pair.empty:
         raise SystemExit("Нет данных для пары.")
 
+    cat_cols = [
+        c for c in ["store_nbr", "family", "type", "city", "state", "cluster", "is_holiday"]
+        if c in df_pair.columns
+    ]
+    df_pair = _prepare_categoricals(df_pair, cat_cols)
+
     # Подготовка признаков
     feat_names = [c for c in df_pair.columns if c not in {"id", "sales", "date"}]
     Xn = df_pair[feat_names]
@@ -97,4 +109,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
