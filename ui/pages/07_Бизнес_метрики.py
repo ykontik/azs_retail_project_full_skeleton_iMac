@@ -96,11 +96,11 @@ price_def, margin_def, holding_def = _defaults_from_prices(int(store_sel), str(f
 st.subheader("Ввод параметров")
 col1, col2, col3, col4, col5 = st.columns(5)
 with col1:
-    price = st.number_input("Цена", min_value=0.0, value=float(price_def or 3.5), step=0.1)
+    price = st.number_input("Цена за шт. ($)", min_value=0.0, value=float(price_def or 3.5), step=0.1)
 with col2:
-    margin_rate = st.number_input("Маржинальность", min_value=0.0, max_value=1.0, value=float(margin_def or 0.25), step=0.01)
+    margin_rate = st.number_input("Маржинальность (доля)", min_value=0.0, max_value=1.0, value=float(margin_def or 0.25), step=0.01)
 with col3:
-    holding_cost = st.number_input("Хранение/день", min_value=0.0, value=float(holding_def or 0.05), step=0.01)
+    holding_cost = st.number_input("Хранение/день ($)", min_value=0.0, value=float(holding_def or 0.05), step=0.01)
 with col4:
     lead_time_days = st.number_input("Lead time (дней)", min_value=1, value=2, step=1)
 with col5:
@@ -139,13 +139,13 @@ rop = daily_mean * L + safety_stock
 
 colA, colB, colC, colD = st.columns(4)
 with colA:
-    st.metric("Средний спрос/день", f"{daily_mean:.3f}")
+    st.metric("Средний спрос/день", f"{daily_mean:.3f} шт.")
 with colB:
-    st.metric("MAPE %", f"{mape_pct:.2f}%")
+    st.metric("MAPE", f"{mape_pct:.2f}%")
 with colC:
-    st.metric("Safety Stock", f"{safety_stock:.1f}")
+    st.metric("Safety Stock", f"{safety_stock:.1f} шт.")
 with colD:
-    st.metric("Reorder Point", f"{rop:.1f}")
+    st.metric("Reorder Point", f"{rop:.1f} шт.")
 
 # Денежные оценки: упущенная маржа (недопоставка) и хранение (излишки)
 expected_under_units = (1 - float(service_level)) * daily_mean * L
@@ -155,9 +155,9 @@ over_cost = float(holding_cost) * float(safety_stock)
 st.caption("Денежные оценки (приближённо)")
 c1, c2 = st.columns(2)
 with c1:
-    st.metric("Underage (≈ упущенная маржа за окно поставки)", f"{under_cost:.2f}")
+    st.metric("Underage (≈ упущенная маржа за окно поставки)", f"${under_cost:.2f}")
 with c2:
-    st.metric("Overage (≈ хранение/день)", f"{over_cost:.2f}")
+    st.metric("Overage (≈ хранение/день)", f"${over_cost:.2f}/день")
 
 st.markdown("---")
 st.subheader("MAPE → Деньги: дневной и месячный эффект")
@@ -167,11 +167,11 @@ margin_loss_month = rev_loss_month * float(margin_rate)
 
 colE, colF, colG = st.columns(3)
 with colE:
-    st.metric("Потеря выручки/день (оценка)", f"{rev_loss_day:.2f}")
+    st.metric("Потеря выручки/день (оценка)", f"${rev_loss_day:.2f}")
 with colF:
-    st.metric("Потеря выручки/мес (оценка)", f"{rev_loss_month:.2f}")
+    st.metric("Потеря выручки/мес (оценка)", f"${rev_loss_month:.2f}")
 with colG:
-    st.metric("Потеря маржи/мес (оценка)", f"{margin_loss_month:.2f}")
+    st.metric("Потеря маржи/мес (оценка)", f"${margin_loss_month:.2f}")
 
 # Расчёт SS/ROP через API (FastAPI /reorder_point)
 st.markdown("---")

@@ -238,8 +238,6 @@ with colB:
         family_bt = st.text_input("family (bt)", value="AUTOMOTIVE", key="family_bt")
 with colC:
     back_days = st.number_input("Дней в хвосте", min_value=14, max_value=180, value=60, step=7)
-with colD:
-    recompute = st.checkbox("Пересчитать фичи", value=False)
 show_xgbps_bt = st.checkbox("Показывать XGB per-SKU (если есть)", value=True)
 
 paths = {k: Path("data_raw")/f"{k}.csv" for k in ["train","transactions","oil","holidays_events","stores"]}
@@ -366,12 +364,12 @@ else:
                 mae = np.mean(np.abs(y_tail - y_pred))
                 denom = np.where(y_tail == 0, 1, y_tail)
                 mape = np.mean(np.abs((y_tail - y_pred) / denom)) * 100.0
-                st.metric("MAE (tail)", f"{mae:.3f}")
+                st.metric("MAE (tail)", f"{mae:.3f} шт.")
                 st.metric("MAPE (tail, %)", f"{mape:.2f}%")
                 if y_pred_xgb is not None and show_xgbps_bt:
                         mae_xgb = np.mean(np.abs(y_tail - y_pred_xgb))
                         mape_xgb = np.mean(np.abs((y_tail - y_pred_xgb) / denom)) * 100.0
-                        st.metric("MAE XGBoost (tail)", f"{mae_xgb:.3f}")
+                        st.metric("MAE XGBoost (tail)", f"{mae_xgb:.3f} шт.")
                         st.metric("MAPE XGBoost (tail, %)", f"{mape_xgb:.2f}%")
                 # Метрики для квантильного коридора (по дням), если есть
                 if q50_pred is not None and q90_pred is not None:
@@ -379,7 +377,7 @@ else:
                     inside = np.mean((y_tail >= np.minimum(q50_pred, q90_pred)) & (y_tail <= np.maximum(q50_pred, q90_pred)))
                     avg_width = float(np.mean(np.abs(q90_pred - q50_pred)))
                     st.metric("Доля покрытия факта (P50–P90)", f"{inside*100:.1f}%")
-                    st.metric("Средняя ширина коридора", f"{avg_width:.3f}")
+                    st.metric("Средняя ширина коридора", f"{avg_width:.3f} шт.")
 
                 # Вкладка 2: Агрегации по времени (недели/месяцы)
                 with tabs[1]:
@@ -430,7 +428,7 @@ else:
                     mae_agg = np.mean(np.abs(y_true_agg - y_pred_agg))
                     denom_agg = np.where(y_true_agg == 0, 1, y_true_agg)
                     mape_agg = np.mean(np.abs((y_true_agg - y_pred_agg) / denom_agg)) * 100.0
-                    st.metric("MAE (agg)", f"{mae_agg:.3f}")
+                    st.metric("MAE (agg)", f"{mae_agg:.3f} шт.")
                     st.metric("MAPE (agg, %)", f"{mape_agg:.2f}%")
 
 st.markdown("---")
@@ -489,10 +487,10 @@ if 'features_text_buf' in st.session_state and st.session_state.get('features_te
         if r.ok:
             data = r.json()
             m1, m2, m3, m4 = st.columns(4)
-            m1.metric("daily_mean", f"{data['daily_mean']:.2f}")
-            m2.metric("sigma_daily", f"{data['sigma_daily']:.2f}")
-            m3.metric("Safety Stock", f"{data['safety_stock']:.2f}")
-            m4.metric("ROP", f"{data['reorder_point']:.2f}")
+            m1.metric("Daily mean (API)", f"{data['daily_mean']:.2f} шт.")
+            m2.metric("Sigma (API)", f"{data['sigma_daily']:.2f} шт.")
+            m3.metric("Safety Stock (API)", f"{data['safety_stock']:.2f} шт.")
+            m4.metric("ROP (API)", f"{data['reorder_point']:.2f} шт.")
             st.caption(f"quantiles_used={data.get('quantiles_used', False)} | z={data.get('service_level_z')}")
         else:
             st.error(f"Ошибка API: {r.status_code} {r.text}")

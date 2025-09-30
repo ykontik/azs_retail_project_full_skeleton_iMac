@@ -25,6 +25,11 @@ try:
 except Exception:  # pragma: no cover
     raise SystemExit("SHAP не установлен. Добавьте shap в requirements или установите локально.")
 
+import sys
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
 from make_features import make_features
 
 def _prepare_categoricals(df: pd.DataFrame, cat_cols: list[str]) -> pd.DataFrame:
@@ -91,8 +96,8 @@ def main():
 
     # Сохранить сводные результаты
     out_png = Path(args.warehouse_dir) / f"shap_summary_{args.store}__{str(args.family).replace(' ', '_')}.png"
-    shap.plots.beeswarm(shap_values, show=False, max_display=25)
     import matplotlib.pyplot as plt
+    shap.plots.beeswarm(shap_values, show=False, max_display=25)
     plt.tight_layout()
     plt.savefig(out_png, dpi=160)
     plt.close()
