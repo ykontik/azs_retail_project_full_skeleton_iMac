@@ -25,11 +25,6 @@ try:
 except Exception:  # pragma: no cover
     raise SystemExit("SHAP не установлен. Добавьте shap в requirements или установите локально.")
 
-import sys
-ROOT = Path(__file__).resolve().parents[1]
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
-
 from make_features import make_features
 
 def _prepare_categoricals(df: pd.DataFrame, cat_cols: list[str]) -> pd.DataFrame:

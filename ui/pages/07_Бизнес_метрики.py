@@ -268,10 +268,10 @@ with col_api1:
                     data = r.json()
                     st.success("SS/ROP получены из API")
                     c1, c2, c3, c4 = st.columns(4)
-                    with c1: st.metric("Daily mean (API)", f"{data.get('daily_mean', 0):.3f}")
-                    with c2: st.metric("Sigma (API)", f"{data.get('sigma_daily', 0):.3f}")
-                    with c3: st.metric("Safety Stock (API)", f"{data.get('safety_stock', 0):.1f}")
-                    with c4: st.metric("ROP (API)", f"{data.get('reorder_point', 0):.1f}")
+                    with c1: st.metric("Daily mean (API), шт.", f"{data.get('daily_mean', 0):.3f}")
+                    with c2: st.metric("Sigma (API), шт.", f"{data.get('sigma_daily', 0):.3f}")
+                    with c3: st.metric("Safety Stock (API), шт.", f"{data.get('safety_stock', 0):.1f}")
+                    with c4: st.metric("ROP (API), шт.", f"{data.get('reorder_point', 0):.1f}")
             except Exception as e:
                 st.error(f"Не удалось обратиться к API: {e}")
 

@@ -72,6 +72,7 @@ if metrics_path.exists():
         try:
             agg_store = (metrics.groupby("store_nbr", dropna=True)[["MAE","MAPE_%"]]
                                   .mean()
+                                  .round(2)
                                   .reset_index()
                                   .sort_values("MAE"))
             st.dataframe(agg_store, use_container_width=True)
@@ -84,6 +85,7 @@ if metrics_path.exists():
         try:
             agg_family = (metrics.groupby("family", dropna=True)[["MAE","MAPE_%"]]
                                   .mean()
+                                  .round(2)
                                   .reset_index()
                                   .sort_values("MAE"))
             st.dataframe(agg_family, use_container_width=True)
@@ -487,10 +489,10 @@ if 'features_text_buf' in st.session_state and st.session_state.get('features_te
         if r.ok:
             data = r.json()
             m1, m2, m3, m4 = st.columns(4)
-            m1.metric("Daily mean (API)", f"{data['daily_mean']:.2f} шт.")
-            m2.metric("Sigma (API)", f"{data['sigma_daily']:.2f} шт.")
-            m3.metric("Safety Stock (API)", f"{data['safety_stock']:.2f} шт.")
-            m4.metric("ROP (API)", f"{data['reorder_point']:.2f} шт.")
+            m1.metric("Daily mean (API), шт.", f"{data['daily_mean']:.2f}")
+            m2.metric("Sigma (API), шт.", f"{data['sigma_daily']:.2f}")
+            m3.metric("Safety Stock (API), шт.", f"{data['safety_stock']:.2f}")
+            m4.metric("ROP (API), шт.", f"{data['reorder_point']:.2f}")
             st.caption(f"quantiles_used={data.get('quantiles_used', False)} | z={data.get('service_level_z')}")
         else:
             st.error(f"Ошибка API: {r.status_code} {r.text}")

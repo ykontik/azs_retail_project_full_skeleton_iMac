@@ -132,8 +132,7 @@ for i, mp in enumerate(models[:total], start=1):
     })
     # агрегируем по периоду и разрезу
     g = (dfp.set_index("date")
-             .groupby([pd.Grouper(freq=freq), dim_key])
-             .agg({"y_true": agg_fn, "y_pred": agg_fn})
+             .groupby([pd.Grouper(freq=freq), dim_key]).agg({"y_true": agg_fn, "y_pred": agg_fn}).round(2)
              .reset_index())
 
     for _, row in g.iterrows():
