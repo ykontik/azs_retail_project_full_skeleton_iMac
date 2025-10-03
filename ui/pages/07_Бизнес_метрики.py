@@ -268,10 +268,10 @@ with col_api1:
                     data = r.json()
                     st.success("SS/ROP получены из API")
                     c1, c2, c3, c4 = st.columns(4)
-                    with c1: st.metric("Daily mean (API), шт.", f"{data.get('daily_mean', 0):.3f}")
-                    with c2: st.metric("Sigma (API), шт.", f"{data.get('sigma_daily', 0):.3f}")
-                    with c3: st.metric("Safety Stock (API), шт.", f"{data.get('safety_stock', 0):.1f}")
-                    with c4: st.metric("ROP (API), шт.", f"{data.get('reorder_point', 0):.1f}")
+                    with c1: st.metric("Daily mean (API), шт.", f"{data.get('daily_mean', 0):.2f}")
+                    with c2: st.metric("Sigma (API), шт.", f"{data.get('sigma_daily', 0):.2f}")
+                    with c3: st.metric("Safety Stock (API), шт.", f"{data.get('safety_stock', 0):.2f}")
+                    with c4: st.metric("ROP (API), шт.", f"{data.get('reorder_point', 0):.2f}")
             except Exception as e:
                 st.error(f"Не удалось обратиться к API: {e}")
 
@@ -461,7 +461,10 @@ if mass_btn:
     if rows:
         out = pd.DataFrame(rows)
         st.success(f"Рассчитано пар: {len(out)} (из {seen} просмотренных)")
-        st.dataframe(out, use_container_width=True)
-        st.download_button("⬇️ Скачать SS/ROP (CSV)", data=out.to_csv(index=False).encode("utf-8"), file_name="mass_ss_rop.csv", mime="text/csv")
+        num_cols = out.select_dtypes(include="number").columns
+        styled = out.style.format({col: "{:.2f}" for col in num_cols})
+        st.dataframe(styled, use_container_width=True)
+        st.caption("Единицы: daily_mean, sigma, SS, ROP — шт.; денежные столбцы — $")
+        st.download_button("⬇️ Скачать SS/ROP (CSV)", data=out.round(2).to_csv(index=False, float_format="%.2f").encode("utf-8"), file_name="mass_ss_rop.csv", mime="text/csv")
     else:
         st.info("Нет данных для расчёта (проверьте фильтры или наличие квантильных моделей).")

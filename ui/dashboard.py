@@ -505,10 +505,10 @@ stock_csv = Path("data_dw/stock_plan.csv")
 if stock_csv.exists():
     try:
         df_stock = pd.read_csv(stock_csv)
-        st.dataframe(df_stock, use_container_width=True)
+        st.dataframe(df_stock.round(2), use_container_width=True)
         st.download_button(
             "⬇️ Скачать stock_plan.csv",
-            data=df_stock.to_csv(index=False).encode("utf-8"),
+            data=df_stock.round(2).to_csv(index=False, float_format="%.2f").encode("utf-8"),
             file_name="stock_plan.csv",
             mime="text/csv",
         )

@@ -132,8 +132,7 @@ for i, mp in enumerate(models[:total], start=1):
     })
     # агрегируем по периоду и разрезу
     g = (dfp.set_index("date")
-             .groupby([pd.Grouper(freq=freq), dim_key]).agg({"y_true": agg_fn, "y_pred": agg_fn}).round(2)
-             .reset_index())
+             .groupby([pd.Grouper(freq=freq), dim_key]).agg({"y_true": agg_fn, "y_pred": agg_fn}).reset_index())
 
     for _, row in g.iterrows():
         period_key = pd.to_datetime(row["date"]).date()
@@ -160,15 +159,17 @@ for (dim_val, period_key), vals in acc.items():
     rows.append({dim_key: dim_val, "period": period_key, "MAE": ae, "MAPE": me})
 
 dfm = pd.DataFrame(rows)
-piv = dfm.pivot_table(index=dim_key, columns="period", values=metric, aggfunc="mean").fillna(0.0)
+dfm["MAE"] = dfm["MAE"].round(2)
+dfm["MAPE"] = dfm["MAPE"].round(2)
+piv = dfm.pivot_table(index=dim_key, columns="period", values=metric, aggfunc="mean").fillna(0.0).round(2)
 
 st.subheader(f"Тепловая карта: {metric} ({'сумма' if agg_fn=='sum' else 'среднее'}) по {dimension.lower()} и периодам")
 st.caption("Ось Y — %s; ось X — %s. Подсказка: горизонтальная прокрутка для длинных периодов" %
            ("магазины" if dimension=="По магазинам" else "семейства", "недели" if period=="Неделя" else "месяцы"))
-st.dataframe(piv.style.background_gradient(cmap="YlOrRd"), use_container_width=True)
+st.dataframe(piv.style.format("{:.2f}").background_gradient(cmap="YlOrRd"), use_container_width=True)
 st.download_button(
     "⬇️ Скачать тепловую карту (CSV)",
-    data=piv.to_csv().encode("utf-8"),
+    data=piv.round(2).to_csv().encode("utf-8"),
     file_name=f"heatmap_{metric}_{'stores' if dimension=='По магазинам' else 'families'}_{'W' if period=='Неделя' else 'M'}.csv",
     mime="text/csv",
 )
