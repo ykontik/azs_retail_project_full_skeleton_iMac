@@ -120,10 +120,22 @@ except Exception as e:
 st.subheader("⚡ Быстрый прогноз (через API)")
 col1, col2 = st.columns(2)
 with col1:
-    store_nbr = st.number_input("store_nbr", min_value=1, step=1, value=1)
-    family = st.text_input("family", value="AUTOMOTIVE")
+    store_opts = None
+    family_opts = []
+    if 'metrics' in locals() and metrics is not None:
+        try:
+            store_opts = sorted(metrics['store_nbr'].dropna().astype(int).unique().tolist())
+        except Exception:
+            store_opts = None
+    if store_opts:
+        store_nbr = st.selectbox('store_nbr', store_opts, index=0)
+        fam_candidates = metrics.loc[metrics['store_nbr'] == store_nbr, 'family'].dropna().astype(str).unique().tolist() if 'metrics' in locals() else []
+        family = st.selectbox('family', sorted(fam_candidates) or ['AUTOMOTIVE'])
+    else:
+        store_nbr = st.number_input('store_nbr', min_value=1, step=1, value=1)
+        family = st.text_input('family', value='AUTOMOTIVE')
 with col2:
-    st.caption("Вставь JSON с фичами. Отсутствующие будут заполнены 0.")
+    st.caption('Вставь JSON с фичами. Отсутствующие будут заполнены 0.')
     default_features = {
         "year": 2017, "month": 8, "week": 33, "day": 15, "dayofweek": 2,
         "is_weekend": 0, "is_month_start": 0, "is_month_end": 0,
@@ -212,7 +224,7 @@ if st.button("Спрогнозировать через API", type="primary"):
         r = requests.post(f"{API_URL}/predict_demand", json=payload, timeout=10)
         if r.ok:
             out = r.json()
-            st.success(f"Прогноз: {out['pred_qty']:.3f}")
+            st.success(f"Прогноз: {out['pred_qty']:.2f} шт.")
             with st.expander("Использованные фичи"):
                 st.code(json.dumps(out["used_features"], ensure_ascii=False, indent=2))
         else:
