@@ -139,8 +139,35 @@ def predict_xgb(model, df: pd.DataFrame, feature_list: List[str]):
     return model.predict(X)
 
 
-# Список доступных per‑SKU моделей
-models = sorted([p for p in MODELS_DIR.glob("*.joblib") if "__q" not in p.name and "global_xgboost" not in p.name])
+def prepare_rf_features(df: pd.DataFrame, feature_list: List[str]) -> pd.DataFrame:
+    X = ensure_columns(df, feature_list).copy()
+    bool_cols = X.select_dtypes(include=["bool"]).columns.tolist()
+    if bool_cols:
+        X[bool_cols] = X[bool_cols].astype("int8")
+    obj_cols = X.select_dtypes(include=["object", "string"]).columns.tolist()
+    for col in obj_cols:
+        X[col] = X[col].astype("category").cat.codes.astype("int16")
+    cat_cols = X.select_dtypes(include=["category"]).columns.tolist()
+    for col in cat_cols:
+        X[col] = X[col].cat.codes.astype("int16")
+    return X.fillna(0.0)
+
+
+def predict_rf(model, df: pd.DataFrame, feature_list: List[str]):
+    X = prepare_rf_features(df, feature_list)
+    return model.predict(X)
+
+
+# Список доступных per‑SKU моделей (берём базовые LGBM-файлы вида store__family.joblib)
+models = sorted(
+    [
+        p
+        for p in MODELS_DIR.glob("*.joblib")
+        if "__q" not in p.name
+        and not p.name.startswith("global_")
+        and len(p.stem.split("__")) == 2
+    ]
+)
 if not models:
     st.warning("Нет per‑SKU моделей в каталоге models/. Запустите обучение.")
     st.stop()
@@ -163,7 +190,7 @@ period = st.sidebar.radio("Период", ["День", "Неделя", "Меся
 
 # Переключатели линий — над графиком
 st.subheader("Показать линии")
-col_t1, col_t2, col_t3, col_t4, col_t5 = st.columns(5)
+col_t1, col_t2, col_t3, col_t4, col_t5, col_t6 = st.columns(6)
 with col_t1:
     show_fact = st.checkbox("Факт", value=True, key="t_fact_strict")
 with col_t2:
@@ -174,6 +201,8 @@ with col_t4:
     show_xgb = st.checkbox("XGB (global)", value=True, key="t_xgb_strict")
 with col_t5:
     show_xgbps = st.checkbox("XGB per‑SKU", value=True, key="t_xgbps_strict")
+with col_t6:
+    show_rf = st.checkbox("RandomForest per‑SKU", value=True, key="t_rf_strict")
 
 Xfull, missing = build_features()
 if Xfull is None:
@@ -245,6 +274,27 @@ try:
 except Exception:
     mdl_xgb_ps = None
 
+mdl_rf = None
+rf_feats: Optional[List[str]] = None
+rf_err: Optional[str] = None
+try:
+    rf_path = MODELS_DIR / f"{base_stem}__rf.joblib"
+    if rf_path.exists():
+        mdl_rf = joblib.load(rf_path)
+        rf_feats = getattr(mdl_rf, "feature_names_in_", None)
+        if rf_feats is None:
+            rf_json = MODELS_DIR / f"{base_stem}__rf.features.json"
+            if rf_json.exists():
+                import json as _json
+                data = _json.loads(rf_json.read_text(encoding="utf-8"))
+                if isinstance(data, list):
+                    rf_feats = [c for c in data if isinstance(c, str)]
+        if rf_feats is not None:
+            rf_feats = list(dict.fromkeys(rf_feats))
+except Exception as exc:
+    mdl_rf = None
+    rf_err = str(exc)
+
 
 def agg_series(dates: pd.Series, y: np.ndarray, how: str):
     df = pd.DataFrame({"date": dates.values, "y": y})
@@ -284,6 +334,15 @@ if mdl_xgb_ps is not None:
     except Exception as e:
         err_xgbps_pred = str(e)
 
+y_rf = None
+err_rf_pred = None
+if mdl_rf is not None:
+    try:
+        feats = list(rf_feats) if rf_feats else feat_lgb
+        y_rf = predict_rf(mdl_rf, tail, feats)
+    except Exception as e:
+        err_rf_pred = str(e)
+
 
 # График
 import matplotlib.pyplot as plt
@@ -291,7 +350,7 @@ import matplotlib.pyplot as plt
 x_dates, y_true_agg = agg_series(tail["date"], y_true, period)
 _, y_lgb_agg = agg_series(tail["date"], y_lgb, period)
 fig, ax = plt.subplots(figsize=(18, 7))
-colors = {"fact": "#1f77b4", "lgbm": "#ff7f0e", "cat": "#2ca02c", "xgb": "#d62728", "xgbps": "#17becf"}
+colors = {"fact": "#1f77b4", "lgbm": "#ff7f0e", "cat": "#2ca02c", "xgb": "#d62728", "xgbps": "#17becf", "rf": "#9467bd"}
 if show_fact and y_true is not None:
     ax.plot(x_dates, y_true_agg, label="Факт", color=colors["fact"], linewidth=2.0)
 if show_lgbm:
@@ -305,6 +364,9 @@ if show_xgb and (y_xgb is not None):
 if show_xgbps and (y_xgbps is not None):
     _, y_xgbps_agg = agg_series(tail["date"], y_xgbps, period)
     ax.plot(x_dates, y_xgbps_agg, label="XGBoost (per‑SKU)", color=colors["xgbps"], linewidth=1.7)
+if show_rf and (y_rf is not None):
+    _, y_rf_agg = agg_series(tail["date"], y_rf, period)
+    ax.plot(x_dates, y_rf_agg, label="RandomForest (per‑SKU)", color=colors["rf"], linewidth=1.7)
 
 ax.set_title(f"Хвост {int(back_days)} дн., период: {period.lower()}")
 ax.set_xlabel("Дата/Период"); ax.set_ylabel("Продажи")
@@ -346,6 +408,11 @@ with st.expander("Диагностика", expanded=False):
             "predicted": y_xgbps is not None,
             "errors": err_xgbps_pred,
         },
+        "rf_per_sku": {
+            "available": mdl_rf is not None,
+            "predicted": y_rf is not None,
+            "errors": rf_err or err_rf_pred,
+        },
     })
 
 # Метрики по хвосту (дневные)
@@ -361,7 +428,7 @@ def _mae_mape(y_true_arr, y_pred_arr):
     mape = float(np.mean(np.abs((y_true_arr - y_pred_arr) / denom)) * 100.0)
     return mae, mape
 
-col_m1, col_m2, col_m3, col_m4 = st.columns(4)
+col_m1, col_m2, col_m3, col_m4, col_m5 = st.columns(5)
 mae_l, mape_l = _mae_mape(y_true, y_lgb)
 if mae_l is not None:
     with col_m1:
@@ -382,6 +449,11 @@ if mae_xps is not None:
     with col_m4:
         st.metric("XGB per‑SKU — MAE", f"{mae_xps:.3f}")
         st.metric("XGB per‑SKU — MAPE %", f"{mape_xps:.2f}%")
+mae_rf, mape_rf = _mae_mape(y_true, y_rf)
+if mae_rf is not None:
+    with col_m5:
+        st.metric("RandomForest — MAE", f"{mae_rf:.3f}")
+        st.metric("RandomForest — MAPE %", f"{mape_rf:.2f}%")
 
 st.markdown("---")
 st.subheader("Сводные сравнения и выгрузка")
@@ -444,6 +516,24 @@ for (s, f) in pairs_all:
                 y_xps = predict_xgb(mx, df_p, list(fx))
             except Exception:
                 y_xps = None
+        # RandomForest per‑SKU
+        y_rf_pair = None
+        rf_path = MODELS_DIR / f"{int(s)}__{str(f).replace(' ', '_')}__rf.joblib"
+        if rf_path.exists():
+            try:
+                mr = joblib.load(rf_path)
+                fr = getattr(mr, 'feature_names_in_', None)
+                if fr is None:
+                    rf_json = MODELS_DIR / f"{int(s)}__{str(f).replace(' ', '_')}__rf.features.json"
+                    if rf_json.exists():
+                        import json as _json
+                        data = _json.loads(rf_json.read_text(encoding="utf-8"))
+                        if isinstance(data, list):
+                            fr = [c for c in data if isinstance(c, str)]
+                fr_list = list(fr) if fr else feats
+                y_rf_pair = predict_rf(mr, df_p, fr_list)
+            except Exception:
+                y_rf_pair = None
 
         # метрики
         denom = np.where(y_t == 0, 1, y_t)
@@ -501,6 +591,22 @@ for (s, f) in pairs_all:
                 "GAIN_XGBps_vs_LGBM_MAE": mae_l - mae_xps,
                 "GAIN_XGBps_vs_LGBM_MAPE": mape_l - mape_xps,
                 "XGBps_wMAPE": wmape_xps, "XGBps_wkMAPE": weekly_mape_xps,
+            })
+        if y_rf_pair is not None:
+            mae_rf_pair = float(np.mean(np.abs(y_t - y_rf_pair)))
+            mape_rf_pair = float(np.mean(np.abs((y_t - y_rf_pair) / denom)) * 100.0)
+            wmape_rf = float(np.sum(np.abs(y_t - y_rf_pair)) / max(tail_sum, 1.0) * 100.0)
+            dfw_rf = pd.DataFrame({"date": df_p["date"].values, "y_true": y_t, "y_pred": y_rf_pair})
+            gw_rf = dfw_rf.set_index("date").groupby(pd.Grouper(freq="W")).sum().reset_index()
+            denom_w_rf = np.where(gw_rf["y_true"].values == 0, 1, gw_rf["y_true"].values)
+            weekly_mape_rf = float(np.mean(np.abs((gw_rf["y_true"].values - gw_rf["y_pred"].values) / denom_w_rf)) * 100.0)
+            row.update({
+                "RF_MAE": mae_rf_pair,
+                "RF_MAPE": mape_rf_pair,
+                "GAIN_RF_vs_LGBM_MAE": mae_l - mae_rf_pair,
+                "GAIN_RF_vs_LGBM_MAPE": mape_l - mape_rf_pair,
+                "RF_wMAPE": wmape_rf,
+                "RF_wkMAPE": weekly_mape_rf,
             })
         rows.append(row)
     except Exception:
@@ -575,5 +681,11 @@ if rows:
         st.subheader("Heatmap: XGB per‑SKU vs LGBM (положительное = XGB per‑SKU лучше)")
         st.dataframe(pv.style.background_gradient(cmap="RdYlGn"), use_container_width=True)
         st.download_button("⬇️ CSV: heatmap XGB per‑SKU vs LGBM", data=pv.to_csv().encode("utf-8"), file_name="heatmap_xgbps_vs_lgbm.csv", mime="text/csv")
+    if {"GAIN_RF_vs_LGBM_MAE", "GAIN_RF_vs_LGBM_MAPE"}.issubset(dfm.columns):
+        val = "GAIN_RF_vs_LGBM_MAE" if metric_choice == "MAE" else "GAIN_RF_vs_LGBM_MAPE"
+        pv = dfm.pivot_table(index=dim_col, columns="family" if dim_col=="store_nbr" else "store_nbr", values=val, aggfunc="mean").fillna(0.0)
+        st.subheader("Heatmap: RandomForest vs LGBM (положительное = RandomForest лучше)")
+        st.dataframe(pv.style.background_gradient(cmap="RdYlGn"), use_container_width=True)
+        st.download_button("⬇️ CSV: heatmap RF vs LGBM", data=pv.to_csv().encode("utf-8"), file_name="heatmap_rf_vs_lgbm.csv", mime="text/csv")
 else:
     st.info("Недостаточно данных для сводного сравнения. Убедитесь, что модели обучены.")

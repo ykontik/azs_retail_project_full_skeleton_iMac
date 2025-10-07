@@ -16,6 +16,15 @@ def main() -> None:
             "MAPE": float(m["MAPE_%"].mean()),
             "size_hint": "joblib per-pair",
         })
+    rf = Path("data_dw/metrics_random_forest.csv")
+    if rf.exists():
+        mrf = pd.read_csv(rf)
+        rows.append({
+            "model": "RandomForest per-SKU",
+            "MAE": float(mrf["MAE"].mean()),
+            "MAPE": float(mrf["MAPE_%"].mean()),
+            "size_hint": "joblib per-pair",
+        })
     for name, fn in [
         ("CatBoost global", Path("data_dw/metrics_global_catboost.json")),
         ("XGBoost global", Path("data_dw/metrics_global_xgboost.json")),
@@ -39,4 +48,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

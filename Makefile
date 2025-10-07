@@ -17,7 +17,7 @@ endif
 SHELL := /bin/bash
 .ONESHELL:
 
-.PHONY: help env validate etl features train api ui docker train_global train_global_xgb venv setup train_xgb train_one_xgb \
+.PHONY: help env validate etl features train api ui docker train_global train_global_xgb venv setup train_xgb train_rf train_one_xgb \
         lint typecheck test test-cov test-fast test-unit test-integration cov all dev-setup precommit-install \
         benchmark benchmark-fast lint-fix quality demo demo-full \
         optuna shap biz-metrics clean-artifacts clean-repo impact prices-template retrain-all \
@@ -38,6 +38,7 @@ help: ## Показать справку по всем командам
 	@echo "  train        - Обучение per-SKU моделей LightGBM"
 	@echo "  train_global - Обучение глобальной CatBoost модели"
 	@echo "  train_global_xgb - Обучение глобальной XGBoost модели"
+	@echo "  train_rf       - Обучение per-SKU RandomForest"
 	@echo ""
 	@echo "🚀 Запуск сервисов:"
 	@echo "  api          - Запуск FastAPI сервера"
@@ -107,7 +108,6 @@ features: env
 	$(PY) features.py
 
 train: env
-	# Пример: можно переопределить параметры через configs/train.yaml и/или CLI
 	$(PY) train_forecast.py \
 	  --train $${RAW_DIR:-data_raw}/train.csv \
 	  --transactions $${RAW_DIR:-data_raw}/transactions.csv \
@@ -175,6 +175,17 @@ setup: venv
 
 train_xgb: env
 	$(PY) train_forecast_xgb.py \
+	  --train $${RAW_DIR:-data_raw}/train.csv \
+	  --transactions $${RAW_DIR:-data_raw}/transactions.csv \
+	  --oil $${RAW_DIR:-data_raw}/oil.csv \
+	  --holidays $${RAW_DIR:-data_raw}/holidays_events.csv \
+	  --stores $${RAW_DIR:-data_raw}/stores.csv \
+	  --top_n_sku $${TOP_N_SKU:-50} \
+	  --top_recent_days $${TOP_RECENT_DAYS:-90} \
+	  --valid_days $${VALID_DAYS:-28}
+
+train_rf: env
+	$(PY) train_random_forest.py \
 	  --train $${RAW_DIR:-data_raw}/train.csv \
 	  --transactions $${RAW_DIR:-data_raw}/transactions.csv \
 	  --oil $${RAW_DIR:-data_raw}/oil.csv \
