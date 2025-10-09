@@ -72,12 +72,13 @@ else:
 
 st.subheader("Худшие пары (по выбранной метрике)")
 lead = sub.sort_values(metric, ascending=False).head(int(top_n))
+lead_display = lead.copy().round(2)
 cols_show = ["store_nbr", "family", "MAE", "MAPE_%", "wMAPE_%_est", "NAIVE_LAG7_MAE", "NAIVE_MA7_MAE"]
 cols_show = [c for c in cols_show if c in lead.columns]
-st.dataframe(lead[cols_show].fillna(""), use_container_width=True)
+st.dataframe(lead_display[cols_show].fillna(""), use_container_width=True)
 st.download_button(
     "⬇️ Скачать лидерборд (CSV)",
-    data=lead.to_csv(index=False).encode("utf-8"),
+    data=lead_display.to_csv(index=False, float_format="%.2f").encode("utf-8"),
     file_name="leaderboard_filtered.csv",
     mime="text/csv",
 )
@@ -90,6 +91,7 @@ with c1:
     agg_store = (
         sub.groupby("store_nbr", dropna=True)[["MAE", "MAPE_%"]]
         .mean()
+        .round(2)
         .reset_index()
         .sort_values("MAE")
     )
@@ -103,6 +105,7 @@ with c2:
     agg_family = (
         sub.groupby("family", dropna=True)[["MAE", "MAPE_%"]]
         .mean()
+        .round(2)
         .reset_index()
         .sort_values("MAE")
     )

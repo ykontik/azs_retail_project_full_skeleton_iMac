@@ -50,11 +50,12 @@ st.subheader("📈 Метрики по SKU (MAE / MAPE)")
 metrics_path = Path("data_dw/metrics_per_sku.csv")
 if metrics_path.exists():
     metrics = pd.read_csv(metrics_path)
-    st.dataframe(metrics, use_container_width=True)
+    metrics_display = metrics.round(2)
+    st.dataframe(metrics_display, use_container_width=True)
     # кнопка скачать CSV
     st.download_button(
         "⬇️ Скачать metrics_per_sku.csv",
-        data=metrics.to_csv(index=False).encode("utf-8"),
+        data=metrics_display.to_csv(index=False, float_format="%.2f").encode("utf-8"),
         file_name="metrics_per_sku.csv",
         mime="text/csv",
     )
@@ -111,7 +112,7 @@ try:
         else:
             store_sel = st.number_input("store_nbr", min_value=1, step=1, value=1)
             family_sel = st.text_input("family", value="AUTOMOTIVE")
-        st.dataframe(models_df, use_container_width=True)
+        st.dataframe(models_df.round(2), use_container_width=True)
     else:
         st.warning("Не удалось получить список моделей из API.")
 except Exception as e:

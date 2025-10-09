@@ -305,8 +305,14 @@ if run_rep:
             st.success("Отчёт сформирован: data_dw/business_impact_report.csv")
             if (DW_DIR / "business_impact_report.csv").exists():
                 dfrep = pd.read_csv(DW_DIR / "business_impact_report.csv")
-                st.dataframe(dfrep.head(200), use_container_width=True)
-                st.download_button("⬇️ Скачать отчёт (CSV)", data=dfrep.to_csv(index=False).encode("utf-8"), file_name="business_impact_report.csv", mime="text/csv")
+                dfrep_display = dfrep.round(2)
+                st.dataframe(dfrep_display.head(200), use_container_width=True)
+                st.download_button(
+                    "⬇️ Скачать отчёт (CSV)",
+                    data=dfrep_display.to_csv(index=False, float_format="%.2f").encode("utf-8"),
+                    file_name="business_impact_report.csv",
+                    mime="text/csv",
+                )
     except Exception as e:
         st.error(f"Не удалось запустить скрипт: {e}")
 
@@ -327,8 +333,14 @@ if impact_csv.exists():
             sub = sub[sub["store_nbr"].isin(sel_stores)]
         if sel_fams:
             sub = sub[sub["family"].astype(str).isin(sel_fams)]
-        st.dataframe(sub, use_container_width=True)
-        st.download_button("⬇️ Скачать impact CSV", data=sub.to_csv(index=False).encode("utf-8"), file_name="business_impact_report_filtered.csv", mime="text/csv")
+        sub_display = sub.round(2)
+        st.dataframe(sub_display, use_container_width=True)
+        st.download_button(
+            "⬇️ Скачать impact CSV",
+            data=sub_display.to_csv(index=False, float_format="%.2f").encode("utf-8"),
+            file_name="business_impact_report_filtered.csv",
+            mime="text/csv",
+        )
     except Exception as e:
         st.warning(f"Не удалось прочитать business_impact_report.csv: {e}")
 else:

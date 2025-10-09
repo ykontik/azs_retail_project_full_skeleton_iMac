@@ -432,27 +432,27 @@ col_m1, col_m2, col_m3, col_m4, col_m5 = st.columns(5)
 mae_l, mape_l = _mae_mape(y_true, y_lgb)
 if mae_l is not None:
     with col_m1:
-        st.metric("LGBM — MAE", f"{mae_l:.3f}")
+        st.metric("LGBM — MAE", f"{mae_l:.2f}")
         st.metric("LGBM — MAPE %", f"{mape_l:.2f}%")
 mae_cb, mape_cb = _mae_mape(y_true, y_cb)
 if mae_cb is not None:
     with col_m2:
-        st.metric("CatBoost — MAE", f"{mae_cb:.3f}")
+        st.metric("CatBoost — MAE", f"{mae_cb:.2f}")
         st.metric("CatBoost — MAPE %", f"{mape_cb:.2f}%")
 mae_xgb, mape_xgb = _mae_mape(y_true, y_xgb)
 if mae_xgb is not None:
     with col_m3:
-        st.metric("XGBoost — MAE", f"{mae_xgb:.3f}")
+        st.metric("XGBoost — MAE", f"{mae_xgb:.2f}")
         st.metric("XGBoost — MAPE %", f"{mape_xgb:.2f}%")
 mae_xps, mape_xps = _mae_mape(y_true, y_xgbps)
 if mae_xps is not None:
     with col_m4:
-        st.metric("XGB per‑SKU — MAE", f"{mae_xps:.3f}")
+        st.metric("XGB per‑SKU — MAE", f"{mae_xps:.2f}")
         st.metric("XGB per‑SKU — MAPE %", f"{mape_xps:.2f}%")
 mae_rf, mape_rf = _mae_mape(y_true, y_rf)
 if mae_rf is not None:
     with col_m5:
-        st.metric("RandomForest — MAE", f"{mae_rf:.3f}")
+        st.metric("RandomForest — MAE", f"{mae_rf:.2f}")
         st.metric("RandomForest — MAPE %", f"{mape_rf:.2f}%")
 
 st.markdown("---")
@@ -546,8 +546,10 @@ for (s, f) in pairs_all:
         denom_w = np.where(gw["y_true"].values == 0, 1, gw["y_true"].values)
         weekly_mape_l = float(np.mean(np.abs((gw["y_true"].values - gw["y_pred"].values) / denom_w)) * 100.0)
         row.update({
-            "LGBM_MAE": mae_l, "LGBM_MAPE": mape_l,
-            "LGBM_wMAPE": wmape_l, "LGBM_wkMAPE": weekly_mape_l,
+            "LGBM_MAE": round(mae_l, 2),
+            "LGBM_MAPE": round(mape_l, 2),
+            "LGBM_wMAPE": round(wmape_l, 2),
+            "LGBM_wkMAPE": round(weekly_mape_l, 2),
         })
         if y_c is not None:
             mae_c = float(np.mean(np.abs(y_t - y_c)))
@@ -559,10 +561,12 @@ for (s, f) in pairs_all:
             denom_w_c = np.where(gw_c["y_true"].values == 0, 1, gw_c["y_true"].values)
             weekly_mape_c = float(np.mean(np.abs((gw_c["y_true"].values - gw_c["y_pred"].values) / denom_w_c)) * 100.0)
             row.update({
-                "CB_MAE": mae_c, "CB_MAPE": mape_c,
-                "GAIN_CB_vs_LGBM_MAE": mae_l - mae_c,
-                "GAIN_CB_vs_LGBM_MAPE": mape_l - mape_c,
-                "CB_wMAPE": wmape_c, "CB_wkMAPE": weekly_mape_c,
+                "CB_MAE": round(mae_c, 2),
+                "CB_MAPE": round(mape_c, 2),
+                "GAIN_CB_vs_LGBM_MAE": round(mae_l - mae_c, 2),
+                "GAIN_CB_vs_LGBM_MAPE": round(mape_l - mape_c, 2),
+                "CB_wMAPE": round(wmape_c, 2),
+                "CB_wkMAPE": round(weekly_mape_c, 2),
             })
         if y_x is not None:
             mae_x = float(np.mean(np.abs(y_t - y_x)))
@@ -573,10 +577,12 @@ for (s, f) in pairs_all:
             denom_w_x = np.where(gw_x["y_true"].values == 0, 1, gw_x["y_true"].values)
             weekly_mape_x = float(np.mean(np.abs((gw_x["y_true"].values - gw_x["y_pred"].values) / denom_w_x)) * 100.0)
             row.update({
-                "XGB_MAE": mae_x, "XGB_MAPE": mape_x,
-                "GAIN_XGB_vs_LGBM_MAE": mae_l - mae_x,
-                "GAIN_XGB_vs_LGBM_MAPE": mape_l - mape_x,
-                "XGB_wMAPE": wmape_x, "XGB_wkMAPE": weekly_mape_x,
+                "XGB_MAE": round(mae_x, 2),
+                "XGB_MAPE": round(mape_x, 2),
+                "GAIN_XGB_vs_LGBM_MAE": round(mae_l - mae_x, 2),
+                "GAIN_XGB_vs_LGBM_MAPE": round(mape_l - mape_x, 2),
+                "XGB_wMAPE": round(wmape_x, 2),
+                "XGB_wkMAPE": round(weekly_mape_x, 2),
             })
         if y_xps is not None:
             mae_xps = float(np.mean(np.abs(y_t - y_xps)))
@@ -587,10 +593,12 @@ for (s, f) in pairs_all:
             denom_w_xps = np.where(gw_xps["y_true"].values == 0, 1, gw_xps["y_true"].values)
             weekly_mape_xps = float(np.mean(np.abs((gw_xps["y_true"].values - gw_xps["y_pred"].values) / denom_w_xps)) * 100.0)
             row.update({
-                "XGBps_MAE": mae_xps, "XGBps_MAPE": mape_xps,
-                "GAIN_XGBps_vs_LGBM_MAE": mae_l - mae_xps,
-                "GAIN_XGBps_vs_LGBM_MAPE": mape_l - mape_xps,
-                "XGBps_wMAPE": wmape_xps, "XGBps_wkMAPE": weekly_mape_xps,
+                "XGBps_MAE": round(mae_xps, 2),
+                "XGBps_MAPE": round(mape_xps, 2),
+                "GAIN_XGBps_vs_LGBM_MAE": round(mae_l - mae_xps, 2),
+                "GAIN_XGBps_vs_LGBM_MAPE": round(mape_l - mape_xps, 2),
+                "XGBps_wMAPE": round(wmape_xps, 2),
+                "XGBps_wkMAPE": round(weekly_mape_xps, 2),
             })
         if y_rf_pair is not None:
             mae_rf_pair = float(np.mean(np.abs(y_t - y_rf_pair)))
@@ -601,12 +609,12 @@ for (s, f) in pairs_all:
             denom_w_rf = np.where(gw_rf["y_true"].values == 0, 1, gw_rf["y_true"].values)
             weekly_mape_rf = float(np.mean(np.abs((gw_rf["y_true"].values - gw_rf["y_pred"].values) / denom_w_rf)) * 100.0)
             row.update({
-                "RF_MAE": mae_rf_pair,
-                "RF_MAPE": mape_rf_pair,
-                "GAIN_RF_vs_LGBM_MAE": mae_l - mae_rf_pair,
-                "GAIN_RF_vs_LGBM_MAPE": mape_l - mape_rf_pair,
-                "RF_wMAPE": wmape_rf,
-                "RF_wkMAPE": weekly_mape_rf,
+                "RF_MAE": round(mae_rf_pair, 2),
+                "RF_MAPE": round(mape_rf_pair, 2),
+                "GAIN_RF_vs_LGBM_MAE": round(mae_l - mae_rf_pair, 2),
+                "GAIN_RF_vs_LGBM_MAPE": round(mape_l - mape_rf_pair, 2),
+                "RF_wMAPE": round(wmape_rf, 2),
+                "RF_wkMAPE": round(weekly_mape_rf, 2),
             })
         rows.append(row)
     except Exception:
@@ -646,15 +654,19 @@ if rows:
         # Top‑N после фильтрации
         top_n = st.number_input("Показать топ‑N строк", min_value=1, max_value=1000, value=min(50, len(summary_filtered)), step=1, key="sum_top_n")
         summary_view = summary_filtered.head(int(top_n))
+        summary_display = summary_view.copy()
+        for col in cols:
+            if col in summary_display.columns:
+                summary_display[col] = summary_display[col].round(2)
         try:
-            styled = summary_view.style.background_gradient(cmap="YlGnBu", subset=[c for c in cols if ("wMAPE" in c) or ("wkMAPE" in c)])
+            styled = summary_display.style.background_gradient(cmap="YlGnBu", subset=[c for c in cols if ("wMAPE" in c) or ("wkMAPE" in c)])
             st.dataframe(styled, use_container_width=True)
         except Exception:
-            st.dataframe(summary_view, use_container_width=True)
+            st.dataframe(summary_display, use_container_width=True)
         # Выгрузки
         st.download_button(
             f"⬇️ CSV: сводка ({'stores' if group_col=='store_nbr' else 'families'})",
-            data=summary_view.to_csv(index=False).encode("utf-8"),
+            data=summary_display.to_csv(index=False).encode("utf-8"),
             file_name=("summary_per_store_extended.csv" if group_col == "store_nbr" else "summary_per_family_extended.csv"),
             mime="text/csv",
         )
@@ -664,28 +676,32 @@ if rows:
     if {"GAIN_CB_vs_LGBM_MAE", "GAIN_CB_vs_LGBM_MAPE"}.issubset(dfm.columns):
         val = "GAIN_CB_vs_LGBM_MAE" if metric_choice == "MAE" else "GAIN_CB_vs_LGBM_MAPE"
         pv = dfm.pivot_table(index=dim_col, columns="family" if dim_col=="store_nbr" else "store_nbr", values=val, aggfunc="mean").fillna(0.0)
+        pv_display = pv.round(2)
         st.subheader("Heatmap: CatBoost vs LGBM (положительное = CatBoost лучше)")
-        st.dataframe(pv.style.background_gradient(cmap="RdYlGn"), use_container_width=True)
-        st.download_button("⬇️ CSV: heatmap CB vs LGBM", data=pv.to_csv().encode("utf-8"), file_name="heatmap_cb_vs_lgbm.csv", mime="text/csv")
+        st.dataframe(pv_display.style.background_gradient(cmap="RdYlGn"), use_container_width=True)
+        st.download_button("⬇️ CSV: heatmap CB vs LGBM", data=pv_display.to_csv().encode("utf-8"), file_name="heatmap_cb_vs_lgbm.csv", mime="text/csv")
     # XGB vs LGBM
     if {"GAIN_XGB_vs_LGBM_MAE", "GAIN_XGB_vs_LGBM_MAPE"}.issubset(dfm.columns):
         val = "GAIN_XGB_vs_LGBM_MAE" if metric_choice == "MAE" else "GAIN_XGB_vs_LGBM_MAPE"
         pv = dfm.pivot_table(index=dim_col, columns="family" if dim_col=="store_nbr" else "store_nbr", values=val, aggfunc="mean").fillna(0.0)
+        pv_display = pv.round(2)
         st.subheader("Heatmap: XGB (global) vs LGBM (положительное = XGB лучше)")
-        st.dataframe(pv.style.background_gradient(cmap="RdYlGn"), use_container_width=True)
-        st.download_button("⬇️ CSV: heatmap XGB vs LGBM", data=pv.to_csv().encode("utf-8"), file_name="heatmap_xgb_vs_lgbm.csv", mime="text/csv")
+        st.dataframe(pv_display.style.background_gradient(cmap="RdYlGn"), use_container_width=True)
+        st.download_button("⬇️ CSV: heatmap XGB vs LGBM", data=pv_display.to_csv().encode("utf-8"), file_name="heatmap_xgb_vs_lgbm.csv", mime="text/csv")
     # XGB per‑SKU vs LGBM
     if {"GAIN_XGBps_vs_LGBM_MAE", "GAIN_XGBps_vs_LGBM_MAPE"}.issubset(dfm.columns):
         val = "GAIN_XGBps_vs_LGBM_MAE" if metric_choice == "MAE" else "GAIN_XGBps_vs_LGBM_MAPE"
         pv = dfm.pivot_table(index=dim_col, columns="family" if dim_col=="store_nbr" else "store_nbr", values=val, aggfunc="mean").fillna(0.0)
+        pv_display = pv.round(2)
         st.subheader("Heatmap: XGB per‑SKU vs LGBM (положительное = XGB per‑SKU лучше)")
-        st.dataframe(pv.style.background_gradient(cmap="RdYlGn"), use_container_width=True)
-        st.download_button("⬇️ CSV: heatmap XGB per‑SKU vs LGBM", data=pv.to_csv().encode("utf-8"), file_name="heatmap_xgbps_vs_lgbm.csv", mime="text/csv")
+        st.dataframe(pv_display.style.background_gradient(cmap="RdYlGn"), use_container_width=True)
+        st.download_button("⬇️ CSV: heatmap XGB per‑SKU vs LGBM", data=pv_display.to_csv().encode("utf-8"), file_name="heatmap_xgbps_vs_lgbm.csv", mime="text/csv")
     if {"GAIN_RF_vs_LGBM_MAE", "GAIN_RF_vs_LGBM_MAPE"}.issubset(dfm.columns):
         val = "GAIN_RF_vs_LGBM_MAE" if metric_choice == "MAE" else "GAIN_RF_vs_LGBM_MAPE"
         pv = dfm.pivot_table(index=dim_col, columns="family" if dim_col=="store_nbr" else "store_nbr", values=val, aggfunc="mean").fillna(0.0)
+        pv_display = pv.round(2)
         st.subheader("Heatmap: RandomForest vs LGBM (положительное = RandomForest лучше)")
-        st.dataframe(pv.style.background_gradient(cmap="RdYlGn"), use_container_width=True)
-        st.download_button("⬇️ CSV: heatmap RF vs LGBM", data=pv.to_csv().encode("utf-8"), file_name="heatmap_rf_vs_lgbm.csv", mime="text/csv")
+        st.dataframe(pv_display.style.background_gradient(cmap="RdYlGn"), use_container_width=True)
+        st.download_button("⬇️ CSV: heatmap RF vs LGBM", data=pv_display.to_csv().encode("utf-8"), file_name="heatmap_rf_vs_lgbm.csv", mime="text/csv")
 else:
     st.info("Недостаточно данных для сводного сравнения. Убедитесь, что модели обучены.")

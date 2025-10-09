@@ -172,10 +172,10 @@ mae_l, mape_l = _metrics(y_true, y_lgb)
 mae_x, mape_x = _metrics(y_true, y_xgb)
 col1, col2 = st.columns(2)
 with col1:
-    st.metric("LGBM — MAE", f"{mae_l:.3f}")
+    st.metric("LGBM — MAE", f"{mae_l:.2f}")
     st.metric("LGBM — MAPE %", f"{mape_l:.2f}%")
 with col2:
-    st.metric("XGBoost — MAE", f"{mae_x:.3f}")
+    st.metric("XGBoost — MAE", f"{mae_x:.2f}")
     st.metric("XGBoost — MAPE %", f"{mape_x:.2f}%")
 
 st.subheader("График (tail)")
@@ -236,11 +236,14 @@ for (s, f) in pairs_all:
         mae_x = float(np.mean(np.abs(y_t - y_x)))
         mape_x = float(np.mean(np.abs((y_t - y_x) / np.where(y_t == 0, 1, y_t))) * 100.0)
         rows.append({
-            "store_nbr": int(s), "family": f,
-            "LGBM_MAE": mae, "LGBM_MAPE": mape,
-            "XGB_MAE": mae_x, "XGB_MAPE": mape_x,
-            "GAIN_XGB_vs_LGBM_MAE": mae - mae_x,
-            "GAIN_XGB_vs_LGBM_MAPE": mape - mape_x,
+            "store_nbr": int(s),
+            "family": f,
+            "LGBM_MAE": round(mae, 2),
+            "LGBM_MAPE": round(mape, 2),
+            "XGB_MAE": round(mae_x, 2),
+            "XGB_MAPE": round(mape_x, 2),
+            "GAIN_XGB_vs_LGBM_MAE": round(mae - mae_x, 2),
+            "GAIN_XGB_vs_LGBM_MAPE": round(mape - mape_x, 2),
         })
     except Exception:
         skipped.append({"store_nbr": s, "family": f, "reason": "unexpected exception"}); continue
@@ -252,12 +255,19 @@ if rows:
     dim_col = "store_nbr" if dim_choice == "По магазинам" else "family"
     val_xgb = "GAIN_XGB_vs_LGBM_MAE" if metric_choice == "MAE" else "GAIN_XGB_vs_LGBM_MAPE"
     pv_xgb = dfm.pivot_table(index=dim_col, columns="family" if dim_col=="store_nbr" else "store_nbr", values=val_xgb, aggfunc="mean").fillna(0.0)
-    st.dataframe(pv_xgb.style.background_gradient(cmap="RdYlGn"), use_container_width=True)
-    st.download_button("⬇️ CSV: heatmap XGB vs LGBM", data=pv_xgb.to_csv().encode("utf-8"), file_name="heatmap_xgb_vs_lgbm.csv", mime="text/csv")
+    pv_display = pv_xgb.round(2)
+    st.dataframe(pv_display.style.background_gradient(cmap="RdYlGn"), use_container_width=True)
+    st.download_button(
+        "⬇️ CSV: heatmap XGB vs LGBM",
+        data=pv_display.to_csv().encode("utf-8"),
+        file_name="heatmap_xgb_vs_lgbm.csv",
+        mime="text/csv",
+    )
 else:
     st.info("Недостаточно данных для heatmap.")
 
 # Показать причины пропусков (диагностика)
 if skipped:
     with st.expander("Пары, исключённые из сравнения (диагностика)", expanded=False):
-        st.dataframe(pd.DataFrame(skipped), use_container_width=True)
+        skipped_df = pd.DataFrame(skipped)
+        st.dataframe(skipped_df.round(2), use_container_width=True)
