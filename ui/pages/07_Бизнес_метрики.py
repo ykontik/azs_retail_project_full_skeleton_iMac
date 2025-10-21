@@ -73,7 +73,10 @@ st.sidebar.header("Параметры")
 store_sel = st.sidebar.selectbox("store_nbr", sorted(sorted(set(int(s) for s, _ in pairs))))
 fam_opts = sorted([str(f) for s, f in pairs if int(s) == int(store_sel)])
 family_sel = st.sidebar.selectbox("family", fam_opts)
-valid_days = st.sidebar.slider("Дней в хвосте (для средних)", min_value=14, max_value=90, value=30, step=1)
+valid_days = st.sidebar.slider(
+    "Дней в хвосте (для средних)", min_value=14, max_value=90, value=30, step=1
+)
+
 
 # Подставим прайс/маржу/хранение из configs/prices.csv при наличии
 def _defaults_from_prices(sto: int, fam: str):
@@ -83,7 +86,9 @@ def _defaults_from_prices(sto: int, fam: str):
     cand = df[df["family"].astype(str) == str(fam)]
     # приоритет: запись с нужным store_nbr, затем без store_nbr
     if "store_nbr" in df.columns:
-        c2 = df[(df["family"].astype(str) == str(fam)) & (df["store_nbr"].astype(float) == float(sto))]
+        c2 = df[
+            (df["family"].astype(str) == str(fam)) & (df["store_nbr"].astype(float) == float(sto))
+        ]
         if not c2.empty:
             cand = c2
     if cand.empty:
@@ -91,20 +96,33 @@ def _defaults_from_prices(sto: int, fam: str):
     row = cand.iloc[0].to_dict()
     return row.get("price"), row.get("margin_rate"), row.get("holding_cost")
 
+
 price_def, margin_def, holding_def = _defaults_from_prices(int(store_sel), str(family_sel))
 
 st.subheader("Ввод параметров")
 col1, col2, col3, col4, col5 = st.columns(5)
 with col1:
-    price = st.number_input("Цена за шт. ($)", min_value=0.0, value=float(price_def or 3.5), step=0.1)
+    price = st.number_input(
+        "Цена за шт. ($)", min_value=0.0, value=float(price_def or 3.5), step=0.1
+    )
 with col2:
-    margin_rate = st.number_input("Маржинальность (доля)", min_value=0.0, max_value=1.0, value=float(margin_def or 0.25), step=0.01)
+    margin_rate = st.number_input(
+        "Маржинальность (доля)",
+        min_value=0.0,
+        max_value=1.0,
+        value=float(margin_def or 0.25),
+        step=0.01,
+    )
 with col3:
-    holding_cost = st.number_input("Хранение/день ($)", min_value=0.0, value=float(holding_def or 0.05), step=0.01)
+    holding_cost = st.number_input(
+        "Хранение/день ($)", min_value=0.0, value=float(holding_def or 0.05), step=0.01
+    )
 with col4:
     lead_time_days = st.number_input("Lead time (дней)", min_value=1, value=2, step=1)
 with col5:
-    service_level = st.number_input("Уровень сервиса", min_value=0.80, max_value=0.99, value=0.95, step=0.01)
+    service_level = st.number_input(
+        "Уровень сервиса", min_value=0.80, max_value=0.99, value=0.95, step=0.01
+    )
 
 
 def _z_from_service_level(p: float) -> float:
@@ -114,14 +132,19 @@ def _z_from_service_level(p: float) -> float:
 
 
 st.subheader("Расчёт по паре")
-df_pair = train[(train["store_nbr"] == int(store_sel)) & (train["family"].astype(str) == str(family_sel))].copy()
+df_pair = train[
+    (train["store_nbr"] == int(store_sel)) & (train["family"].astype(str) == str(family_sel))
+].copy()
 df_pair = df_pair.sort_values("date")
 tail = df_pair.tail(int(valid_days)).copy()
 daily_mean = float(tail["sales"].mean()) if not tail.empty else 0.0
 
 mape_pct = None
 if metrics is not None and not metrics.empty:
-    sub = metrics[(metrics["store_nbr"] == int(store_sel)) & (metrics["family"].astype(str) == str(family_sel))]
+    sub = metrics[
+        (metrics["store_nbr"] == int(store_sel))
+        & (metrics["family"].astype(str) == str(family_sel))
+    ]
     if not sub.empty and "MAPE_%" in sub.columns:
         try:
             mape_pct = float(sub.iloc[0]["MAPE_%"])
@@ -134,7 +157,7 @@ if mape_pct is None:
 sigma = max((mape_pct / 100.0) * daily_mean, 0.0)
 z = _z_from_service_level(float(service_level))
 L = max(int(lead_time_days), 1)
-safety_stock = z * sigma * (L ** 0.5)
+safety_stock = z * sigma * (L**0.5)
 rop = daily_mean * L + safety_stock
 
 colA, colB, colC, colD = st.columns(4)
@@ -177,6 +200,7 @@ with colG:
 st.markdown("---")
 st.subheader("Расчёт через API (FastAPI)")
 
+
 def _resolve_api_url() -> str:
     api = os.getenv("API_URL")
     if api:
@@ -192,31 +216,53 @@ def _resolve_api_url() -> str:
         if p.exists():
             try:
                 import tomllib
+
                 data = tomllib.loads(p.read_text(encoding="utf-8"))
                 return data.get("API_URL", "http://127.0.0.1:8000")
             except Exception:
                 pass
     return "http://127.0.0.1:8000"
 
+
 api_url = st.text_input("API URL", value=_resolve_api_url(), help="Адрес FastAPI сервиса")
 
-def build_features_dict_for_pair(df_all: pd.DataFrame, s: int, f: str) -> Optional[Dict[str, float]]:
+
+def build_features_dict_for_pair(
+    df_all: pd.DataFrame, s: int, f: str
+) -> Optional[Dict[str, float]]:
     # Возьмём последнюю строку по паре из train и сформируем фичи, ориентируясь на признаки per‑SKU модели (если есть)
     try:
         from make_features import make_features as _mf
+
         # Попробуем собрать фичи из сырых данных (если есть подключение к остальным CSV)
         # Используем train только для выбора последнего дня — более точные фичи потребуют полноценного пайплайна
-        last_row = df_all[(df_all["store_nbr"] == int(s)) & (df_all["family"].astype(str) == str(f))].sort_values("date").tail(1)
+        last_row = (
+            df_all[(df_all["store_nbr"] == int(s)) & (df_all["family"].astype(str) == str(f))]
+            .sort_values("date")
+            .tail(1)
+        )
         if last_row.empty:
             return None
         # Фallback: загрузим остальные источники, если доступны, и пересоберём фичи корректно
-        paths = {k: RAW_DIR / f"{k}.csv" for k in ["transactions", "oil", "holidays_events", "stores"]}
-        trans = pd.read_csv(paths["transactions"], parse_dates=["date"]) if paths["transactions"].exists() else None
+        paths = {
+            k: RAW_DIR / f"{k}.csv" for k in ["transactions", "oil", "holidays_events", "stores"]
+        }
+        trans = (
+            pd.read_csv(paths["transactions"], parse_dates=["date"])
+            if paths["transactions"].exists()
+            else None
+        )
         oil = pd.read_csv(paths["oil"], parse_dates=["date"]) if paths["oil"].exists() else None
-        hol = pd.read_csv(paths["holidays_events"], parse_dates=["date"]) if paths["holidays_events"].exists() else None
+        hol = (
+            pd.read_csv(paths["holidays_events"], parse_dates=["date"])
+            if paths["holidays_events"].exists()
+            else None
+        )
         stores = pd.read_csv(paths["stores"]) if paths["stores"].exists() else None
         Xf, _ = _mf(df_all, hol, trans, oil, stores, dropna_target=False)
-        sub = Xf[(Xf["store_nbr"] == int(s)) & (Xf["family"].astype(str) == str(f))].sort_values("date")
+        sub = Xf[(Xf["store_nbr"] == int(s)) & (Xf["family"].astype(str) == str(f))].sort_values(
+            "date"
+        )
         if sub.empty:
             return None
         # Список фич из модели (если есть)
@@ -233,7 +279,11 @@ def build_features_dict_for_pair(df_all: pd.DataFrame, s: int, f: str) -> Option
         if feat_cols is None:
             # Общий список: все числовые кроме служебных
             exclude = {"id", "sales", "date"}
-            feat_cols = [c for c in sub.columns if (c not in exclude) and pd.api.types.is_numeric_dtype(sub[c])]
+            feat_cols = [
+                c
+                for c in sub.columns
+                if (c not in exclude) and pd.api.types.is_numeric_dtype(sub[c])
+            ]
         last = sub.iloc[-1]
         feats = {}
         for name in feat_cols:
@@ -246,12 +296,15 @@ def build_features_dict_for_pair(df_all: pd.DataFrame, s: int, f: str) -> Option
     except Exception:
         return None
 
+
 col_api1, col_api2 = st.columns(2)
 with col_api1:
     if st.button("Рассчитать через API /reorder_point"):
         feats = build_features_dict_for_pair(train, int(store_sel), str(family_sel))
         if feats is None or not feats:
-            st.error("Не удалось собрать фичи для пары. Убедитесь, что данные доступны (transactions/oil/holidays/stores).")
+            st.error(
+                "Не удалось собрать фичи для пары. Убедитесь, что данные доступны (transactions/oil/holidays/stores)."
+            )
         else:
             payload = {
                 "store_nbr": int(store_sel),
@@ -268,10 +321,14 @@ with col_api1:
                     data = r.json()
                     st.success("SS/ROP получены из API")
                     c1, c2, c3, c4 = st.columns(4)
-                    with c1: st.metric("Daily mean (API), шт.", f"{data.get('daily_mean', 0):.2f}")
-                    with c2: st.metric("Sigma (API), шт.", f"{data.get('sigma_daily', 0):.2f}")
-                    with c3: st.metric("Safety Stock (API), шт.", f"{data.get('safety_stock', 0):.2f}")
-                    with c4: st.metric("ROP (API), шт.", f"{data.get('reorder_point', 0):.2f}")
+                    with c1:
+                        st.metric("Daily mean (API), шт.", f"{data.get('daily_mean', 0):.2f}")
+                    with c2:
+                        st.metric("Sigma (API), шт.", f"{data.get('sigma_daily', 0):.2f}")
+                    with c3:
+                        st.metric("Safety Stock (API), шт.", f"{data.get('safety_stock', 0):.2f}")
+                    with c4:
+                        st.metric("ROP (API), шт.", f"{data.get('reorder_point', 0):.2f}")
             except Exception as e:
                 st.error(f"Не удалось обратиться к API: {e}")
 
@@ -280,9 +337,13 @@ st.markdown("---")
 st.subheader("Сформировать сводный бизнес‑отчёт (скрипт)")
 colr1, colr2, colr3 = st.columns(3)
 with colr1:
-    tail_days = st.number_input("tail_days (средний спрос)", min_value=7, max_value=90, value=30, step=1)
+    tail_days = st.number_input(
+        "tail_days (средний спрос)", min_value=7, max_value=90, value=30, step=1
+    )
 with colr2:
-    valid_days_rep = st.number_input("valid_days (наивный MAPE)", min_value=7, max_value=90, value=28, step=1)
+    valid_days_rep = st.number_input(
+        "valid_days (наивный MAPE)", min_value=7, max_value=90, value=28, step=1
+    )
 with colr3:
     price_csv = st.text_input("prices.csv", value=str(Path("configs/prices.csv").resolve()))
 
@@ -290,13 +351,23 @@ run_rep = st.button("Сформировать отчёт (scripts/business_impac
 if run_rep:
     import subprocess
     import sys
-    cmd = [sys.executable, "scripts/business_impact_report.py",
-           "--price_csv", price_csv,
-           "--lead_time_days", str(int(lead_time_days)),
-           "--service_level", str(float(service_level)),
-           "--tail_days", str(int(tail_days)),
-           "--valid_days", str(int(valid_days_rep)),
-           "--out_csv", str(DW_DIR / "business_impact_report.csv")]
+
+    cmd = [
+        sys.executable,
+        "scripts/business_impact_report.py",
+        "--price_csv",
+        price_csv,
+        "--lead_time_days",
+        str(int(lead_time_days)),
+        "--service_level",
+        str(float(service_level)),
+        "--tail_days",
+        str(int(tail_days)),
+        "--valid_days",
+        str(int(valid_days_rep)),
+        "--out_csv",
+        str(DW_DIR / "business_impact_report.csv"),
+    ]
     try:
         res = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
         if res.returncode != 0:
@@ -325,9 +396,17 @@ if impact_csv.exists():
         # простые фильтры
         cf1, cf2 = st.columns(2)
         with cf1:
-            sel_stores = st.multiselect("Магазины", options=sorted(imp["store_nbr"].dropna().astype(int).unique().tolist()), default=[])
+            sel_stores = st.multiselect(
+                "Магазины",
+                options=sorted(imp["store_nbr"].dropna().astype(int).unique().tolist()),
+                default=[],
+            )
         with cf2:
-            sel_fams = st.multiselect("Семейства", options=sorted(imp["family"].dropna().astype(str).unique().tolist()), default=[])
+            sel_fams = st.multiselect(
+                "Семейства",
+                options=sorted(imp["family"].dropna().astype(str).unique().tolist()),
+                default=[],
+            )
         sub = imp.copy()
         if sel_stores:
             sub = sub[sub["store_nbr"].isin(sel_stores)]
@@ -344,7 +423,9 @@ if impact_csv.exists():
     except Exception as e:
         st.warning(f"Не удалось прочитать business_impact_report.csv: {e}")
 else:
-    st.info("Файл data_dw/business_impact_report.csv не найден. Сгенерируйте через make impact и configs/prices.csv.")
+    st.info(
+        "Файл data_dw/business_impact_report.csv не найден. Сгенерируйте через make impact и configs/prices.csv."
+    )
 
 # Быстрый массовый расчёт SS/ROP (без скрипта)
 st.markdown("---")
@@ -353,11 +434,17 @@ st.subheader("Быстрый массовый расчёт SS/ROP (без скр
 # Контролы
 colm1, colm2, colm3, colm4 = st.columns(4)
 with colm1:
-    mass_tail_days = st.number_input("tail_days (средний спрос)", min_value=7, max_value=90, value=30, step=1, key="mass_tail")
+    mass_tail_days = st.number_input(
+        "tail_days (средний спрос)", min_value=7, max_value=90, value=30, step=1, key="mass_tail"
+    )
 with colm2:
-    sigma_method = st.radio("Метод σ", ["По MAPE (метрики)", "По квантилям P50/P90 (если есть)"] , index=0)
+    sigma_method = st.radio(
+        "Метод σ", ["По MAPE (метрики)", "По квантилям P50/P90 (если есть)"], index=0
+    )
 with colm3:
-    mass_max_pairs = st.number_input("Ограничить пары", min_value=10, max_value=2000, value=200, step=10)
+    mass_max_pairs = st.number_input(
+        "Ограничить пары", min_value=10, max_value=2000, value=200, step=10
+    )
 with colm4:
     mass_filters = st.checkbox("Фильтры по парам", value=False)
 
@@ -372,21 +459,36 @@ if mass_filters:
     with cfs2:
         sel_fams = st.multiselect("Семейства", options=fams_all, default=[])
 
+
 def _build_all_features():
     # Готовим фичи для всех пар (нужно для метода по квантилям)
     try:
-        paths = {k: RAW_DIR / f"{k}.csv" for k in ["transactions", "oil", "holidays_events", "stores"]}
-        trans = pd.read_csv(paths["transactions"], parse_dates=["date"]) if paths["transactions"].exists() else None
+        paths = {
+            k: RAW_DIR / f"{k}.csv" for k in ["transactions", "oil", "holidays_events", "stores"]
+        }
+        trans = (
+            pd.read_csv(paths["transactions"], parse_dates=["date"])
+            if paths["transactions"].exists()
+            else None
+        )
         oil = pd.read_csv(paths["oil"], parse_dates=["date"]) if paths["oil"].exists() else None
-        hol = pd.read_csv(paths["holidays_events"], parse_dates=["date"]) if paths["holidays_events"].exists() else None
+        hol = (
+            pd.read_csv(paths["holidays_events"], parse_dates=["date"])
+            if paths["holidays_events"].exists()
+            else None
+        )
         stores = pd.read_csv(paths["stores"]) if paths["stores"].exists() else None
         from make_features import make_features as _mf
+
         Xf, _ = _mf(train, hol, trans, oil, stores, dropna_target=False)
         return Xf
     except Exception:
         return None
 
-def _sigma_from_quantiles(xrow: pd.Series, s: int, f: str) -> Tuple[Optional[float], Optional[float]]:
+
+def _sigma_from_quantiles(
+    xrow: pd.Series, s: int, f: str
+) -> Tuple[Optional[float], Optional[float]]:
     base = f"{int(s)}__{str(f).replace(' ', '_')}"
     p50 = MODELS_DIR / f"{base}__q50.joblib"
     p90 = MODELS_DIR / f"{base}__q90.joblib"
@@ -404,7 +506,11 @@ def _sigma_from_quantiles(xrow: pd.Series, s: int, f: str) -> Tuple[Optional[flo
             feat_cols = None
     if feat_cols is None:
         exclude = {"id", "sales", "date"}
-        feat_cols = [c for c in xrow.index if (c not in exclude) and pd.api.types.is_numeric_dtype(type(xrow[c]))]
+        feat_cols = [
+            c
+            for c in xrow.index
+            if (c not in exclude) and pd.api.types.is_numeric_dtype(type(xrow[c]))
+        ]
     try:
         mdl50 = joblib.load(p50)
         mdl90 = joblib.load(p90)
@@ -415,6 +521,7 @@ def _sigma_from_quantiles(xrow: pd.Series, s: int, f: str) -> Tuple[Optional[flo
         return q50, sigma
     except Exception:
         return None, None
+
 
 mass_btn = st.button("Посчитать SS/ROP для всех (быстро)")
 if mass_btn:
@@ -438,7 +545,9 @@ if mass_btn:
         daily_from_q = None
         method_used = "mape"
         if sigma_method.startswith("По квантилям") and Xall is not None:
-            sub = Xall[(Xall["store_nbr"] == int(s)) & (Xall["family"].astype(str) == str(f))].sort_values("date")
+            sub = Xall[
+                (Xall["store_nbr"] == int(s)) & (Xall["family"].astype(str) == str(f))
+            ].sort_values("date")
             if not sub.empty:
                 q50, sig = _sigma_from_quantiles(sub.iloc[-1], int(s), str(f))
                 if (q50 is not None) and (sig is not None):
@@ -449,7 +558,9 @@ if mass_btn:
             # Фоллбек на MAPE
             mape_pct_p = None
             if metrics is not None and not metrics.empty and "MAPE_%" in metrics.columns:
-                sel = metrics[(metrics["store_nbr"] == s) & (metrics["family"].astype(str) == str(f))]
+                sel = metrics[
+                    (metrics["store_nbr"] == s) & (metrics["family"].astype(str) == str(f))
+                ]
                 if not sel.empty:
                     try:
                         mape_pct_p = float(sel.iloc[0]["MAPE_%"])
@@ -461,15 +572,17 @@ if mass_btn:
         mean_used = daily_from_q if (daily_from_q is not None) else daily_mean_p
         ss = z * sigma_p * (int(lead_time_days) ** 0.5)
         rop_val = mean_used * int(lead_time_days) + ss
-        rows.append({
-            "store_nbr": int(s),
-            "family": str(f),
-            "daily_mean": mean_used,
-            "sigma": sigma_p,
-            "SS": ss,
-            "ROP": rop_val,
-            "method": method_used,
-        })
+        rows.append(
+            {
+                "store_nbr": int(s),
+                "family": str(f),
+                "daily_mean": mean_used,
+                "sigma": sigma_p,
+                "SS": ss,
+                "ROP": rop_val,
+                "method": method_used,
+            }
+        )
     if rows:
         out = pd.DataFrame(rows)
         st.success(f"Рассчитано пар: {len(out)} (из {seen} просмотренных)")
@@ -477,6 +590,11 @@ if mass_btn:
         styled = out.style.format({col: "{:.2f}" for col in num_cols})
         st.dataframe(styled, use_container_width=True)
         st.caption("Единицы: daily_mean, sigma, SS, ROP — шт.; денежные столбцы — $")
-        st.download_button("⬇️ Скачать SS/ROP (CSV)", data=out.round(2).to_csv(index=False, float_format="%.2f").encode("utf-8"), file_name="mass_ss_rop.csv", mime="text/csv")
+        st.download_button(
+            "⬇️ Скачать SS/ROP (CSV)",
+            data=out.round(2).to_csv(index=False, float_format="%.2f").encode("utf-8"),
+            file_name="mass_ss_rop.csv",
+            mime="text/csv",
+        )
     else:
         st.info("Нет данных для расчёта (проверьте фильтры или наличие квантильных моделей).")

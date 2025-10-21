@@ -1,4 +1,3 @@
-
 import os
 from pathlib import Path
 
@@ -14,6 +13,7 @@ RAW_DIR = Path(os.getenv("RAW_DIR", "data_raw"))
 OUT_DIR = PARQUET_DIR / "features"
 OUT_DIR.mkdir(parents=True, exist_ok=True)
 
+
 def main():
     train = pd.read_csv(RAW_DIR / "train.csv", parse_dates=["date"])
     transactions = pd.read_csv(RAW_DIR / "transactions.csv", parse_dates=["date"])
@@ -27,6 +27,7 @@ def main():
         pd.DataFrame({"sales": y}).to_parquet(OUT_DIR / "target.parquet", index=False)
 
     print("features →", OUT_DIR / "features.parquet")
+
 
 if __name__ == "__main__":
     main()

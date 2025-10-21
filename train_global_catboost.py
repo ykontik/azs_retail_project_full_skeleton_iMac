@@ -55,12 +55,20 @@ def parse_args():
 
 def fill_paths_from_env(args):
     raw_dir = os.getenv("RAW_DIR", "data_raw")
-    def _need(x: Optional[str]) -> bool: return (x is None) or (str(x).strip() == "")
-    if _need(args.train): args.train = str(Path(raw_dir) / "train.csv")
-    if _need(args.transactions): args.transactions = str(Path(raw_dir) / "transactions.csv")
-    if _need(args.oil): args.oil = str(Path(raw_dir) / "oil.csv")
-    if _need(args.holidays): args.holidays = str(Path(raw_dir) / "holidays_events.csv")
-    if _need(args.stores): args.stores = str(Path(raw_dir) / "stores.csv")
+
+    def _need(path_value: Optional[str]) -> bool:
+        return (path_value is None) or (str(path_value).strip() == "")
+
+    if _need(args.train):
+        args.train = str(Path(raw_dir) / "train.csv")
+    if _need(args.transactions):
+        args.transactions = str(Path(raw_dir) / "transactions.csv")
+    if _need(args.oil):
+        args.oil = str(Path(raw_dir) / "oil.csv")
+    if _need(args.holidays):
+        args.holidays = str(Path(raw_dir) / "holidays_events.csv")
+    if _need(args.stores):
+        args.stores = str(Path(raw_dir) / "stores.csv")
     return args
 
 
@@ -71,8 +79,11 @@ def main():
     Path(args.warehouse_dir).mkdir(parents=True, exist_ok=True)
 
     missing = [
-        ("train", args.train), ("transactions", args.transactions), ("oil", args.oil),
-        ("holidays", args.holidays), ("stores", args.stores)
+        ("train", args.train),
+        ("transactions", args.transactions),
+        ("oil", args.oil),
+        ("holidays", args.holidays),
+        ("stores", args.stores),
     ]
     missing = [k for k, p in missing if (p is None) or (not Path(p).exists())]
     if missing:
@@ -102,9 +113,13 @@ def main():
     pbar.update(1)
 
     # Категориальные фичи
-    cat_cols: List[str] = [c for c in ["store_nbr","family","type","city","state","cluster","is_holiday"] if c in Xfull.columns]
+    cat_cols: List[str] = [
+        c
+        for c in ["store_nbr", "family", "type", "city", "state", "cluster", "is_holiday"]
+        if c in Xfull.columns
+    ]
     # Исключаем служебные
-    feat_cols = [c for c in Xfull.columns if c not in {"id","sales","date"}]
+    feat_cols = [c for c in Xfull.columns if c not in {"id", "sales", "date"}]
 
     X_tr = Xfull.loc[~m_val, feat_cols]
     y_tr = Xfull.loc[~m_val, "sales"].values
@@ -151,7 +166,9 @@ def main():
         "features": feat_cols,
         "categoricals": cat_cols,
     }
-    with open(Path(args.warehouse_dir) / "metrics_global_catboost.json", "w", encoding="utf-8") as f:
+    with open(
+        Path(args.warehouse_dir) / "metrics_global_catboost.json", "w", encoding="utf-8"
+    ) as f:
         json.dump(metrics, f, ensure_ascii=False, indent=2)
     pbar.close()
     print(f"OK: global CatBoost saved → {out_path}\nMAE={mae:.4f}  MAPE={mmape:.2f}%")

@@ -15,14 +15,18 @@ def main() -> None:
     # Фильтры через окружение: STORE_LIST="1,2,3"; FAMILY_LIST="BEVERAGES,PRODUCE"; MAX_PAIRS=100
     store_list = os.environ.get("STORE_LIST", "").strip()
     family_list = os.environ.get("FAMILY_LIST", "").strip()
-    store_set = {int(x) for x in store_list.split(',') if x.strip().isdigit()} if store_list else None
-    family_set = {x.strip() for x in family_list.split(',') if x.strip()} if family_list else None
+    store_set = (
+        {int(x) for x in store_list.split(",") if x.strip().isdigit()} if store_list else None
+    )
+    family_set = {x.strip() for x in family_list.split(",") if x.strip()} if family_list else None
 
     pairs: list[tuple[int, str]] = []
     for s in targets:
         if store_set is not None and s not in store_set:
             continue
-        fams = sorted(train.loc[train["store_nbr"] == s, "family"].dropna().astype(str).unique().tolist())
+        fams = sorted(
+            train.loc[train["store_nbr"] == s, "family"].dropna().astype(str).unique().tolist()
+        )
         for f in fams:
             if family_set is not None and f not in family_set:
                 continue
@@ -35,10 +39,13 @@ def main() -> None:
     # Проверим доступность lightgbm: если нет — пропускаем LGBM, но тренируем XGB
     try:
         import lightgbm  # noqa: F401
+
         have_lgbm = True
     except Exception:
         have_lgbm = False
-        print("WARN: LightGBM не установлен. Пропущу LGBM и обучу только XGB. Установите: pip install lightgbm==4.3.0")
+        print(
+            "WARN: LightGBM не установлен. Пропущу LGBM и обучу только XGB. Установите: pip install lightgbm==4.3.0"
+        )
 
     models_dir = Path(os.environ.get("MODELS_DIR", "models"))
     models_dir.mkdir(parents=True, exist_ok=True)

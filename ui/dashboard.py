@@ -1,4 +1,3 @@
-
 import json
 import os
 import sys
@@ -14,9 +13,23 @@ ROOT = Path(__file__).resolve().parents[1]  # один уровень вверх
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from make_features import make_features
+_make_features_cache = None
+
+
+def get_make_features():
+    global _make_features_cache
+    if _make_features_cache is None:
+        if str(ROOT) not in sys.path:
+            sys.path.insert(0, str(ROOT))
+        from make_features import make_features as _make_features  # noqa: E402
+
+        _make_features_cache = _make_features
+    return _make_features_cache
+
 
 st.set_page_config(page_title="AZS + Retail MVP", layout="wide")
+
+
 # ---- безопасное определение API_URL без обращения к st.secrets ----
 def _resolve_api_url() -> str:
     api = os.getenv("API_URL")
@@ -27,17 +40,19 @@ def _resolve_api_url() -> str:
         Path.home() / ".streamlit" / "secrets.toml",
         Path.cwd() / ".streamlit" / "secrets.toml",
         Path(__file__).resolve().parents[1] / ".streamlit" / "secrets.toml",  # корень проекта
-        Path(__file__).resolve().parent / ".streamlit" / "secrets.toml",      # рядом с ui/
+        Path(__file__).resolve().parent / ".streamlit" / "secrets.toml",  # рядом с ui/
     ]
     for p in candidate_paths:
         if p.exists():
             try:
                 import tomllib  # Python 3.11+
+
                 data = tomllib.loads(p.read_text(encoding="utf-8"))
                 return data.get("API_URL", "http://127.0.0.1:8000")
             except Exception:
                 pass
     return "http://127.0.0.1:8000"
+
 
 API_URL = _resolve_api_url()
 st.title("⛽ AZS + Retail — MVP Dashboard")
@@ -71,11 +86,13 @@ if metrics_path.exists():
     with colm:
         st.caption("Средние по магазинам")
         try:
-            agg_store = (metrics.groupby("store_nbr", dropna=True)[["MAE","MAPE_%"]]
-                                  .mean()
-                                  .round(2)
-                                  .reset_index()
-                                  .sort_values("MAE"))
+            agg_store = (
+                metrics.groupby("store_nbr", dropna=True)[["MAE", "MAPE_%"]]
+                .mean()
+                .round(2)
+                .reset_index()
+                .sort_values("MAE")
+            )
             st.dataframe(agg_store, use_container_width=True)
             st.bar_chart(agg_store.set_index("store_nbr")["MAE"], height=160)
         except Exception as e:
@@ -84,11 +101,13 @@ if metrics_path.exists():
     with colf:
         st.caption("Средние по семействам")
         try:
-            agg_family = (metrics.groupby("family", dropna=True)[["MAE","MAPE_%"]]
-                                  .mean()
-                                  .round(2)
-                                  .reset_index()
-                                  .sort_values("MAE"))
+            agg_family = (
+                metrics.groupby("family", dropna=True)[["MAE", "MAPE_%"]]
+                .mean()
+                .round(2)
+                .reset_index()
+                .sort_values("MAE")
+            )
             st.dataframe(agg_family, use_container_width=True)
             st.bar_chart(agg_family.set_index("family")["MAE"], height=160)
         except Exception as e:
@@ -107,7 +126,12 @@ try:
             available_models_df = models_df.copy()
             store_opts = sorted(models_df["store_nbr"].dropna().astype(int).unique())
             store_sel = st.selectbox("store_nbr", store_opts, index=0, key="store_sel")
-            fam_opts = sorted(models_df.loc[models_df["store_nbr"] == store_sel, "family"].dropna().unique().tolist())
+            fam_opts = sorted(
+                models_df.loc[models_df["store_nbr"] == store_sel, "family"]
+                .dropna()
+                .unique()
+                .tolist()
+            )
             family_sel = st.selectbox("family", fam_opts, index=0, key="family_sel")
         else:
             store_sel = st.number_input("store_nbr", min_value=1, step=1, value=1)
@@ -123,66 +147,111 @@ col1, col2 = st.columns(2)
 with col1:
     store_opts = None
     family_opts = []
-    if 'metrics' in locals() and metrics is not None:
+    if "metrics" in locals() and metrics is not None:
         try:
-            store_opts = sorted(metrics['store_nbr'].dropna().astype(int).unique().tolist())
+            store_opts = sorted(metrics["store_nbr"].dropna().astype(int).unique().tolist())
         except Exception:
             store_opts = None
     if store_opts:
-        store_nbr = st.selectbox('store_nbr', store_opts, index=0)
-        fam_candidates = metrics.loc[metrics['store_nbr'] == store_nbr, 'family'].dropna().astype(str).unique().tolist() if 'metrics' in locals() else []
-        family = st.selectbox('family', sorted(fam_candidates) or ['AUTOMOTIVE'])
+        store_nbr = st.selectbox("store_nbr", store_opts, index=0)
+        fam_candidates = (
+            metrics.loc[metrics["store_nbr"] == store_nbr, "family"]
+            .dropna()
+            .astype(str)
+            .unique()
+            .tolist()
+            if "metrics" in locals()
+            else []
+        )
+        family = st.selectbox("family", sorted(fam_candidates) or ["AUTOMOTIVE"])
     else:
-        store_nbr = st.number_input('store_nbr', min_value=1, step=1, value=1)
-        family = st.text_input('family', value='AUTOMOTIVE')
+        store_nbr = st.number_input("store_nbr", min_value=1, step=1, value=1)
+        family = st.text_input("family", value="AUTOMOTIVE")
 with col2:
-    st.caption('Вставь JSON с фичами. Отсутствующие будут заполнены 0.')
+    st.caption("Вставь JSON с фичами. Отсутствующие будут заполнены 0.")
     default_features = {
-        "year": 2017, "month": 8, "week": 33, "day": 15, "dayofweek": 2,
-        "is_weekend": 0, "is_month_start": 0, "is_month_end": 0,
-        "dow_sin": 0.0, "dow_cos": 0.0, "month_sin": 0.0, "month_cos": 0.0,
-        "trend": 1600, "is_holiday": 0, "is_christmas": 0, "is_newyear": 0, "is_black_friday": 0,
-        "transactions": 500.0, "oil_price": 50.0,
+        "year": 2017,
+        "month": 8,
+        "week": 33,
+        "day": 15,
+        "dayofweek": 2,
+        "is_weekend": 0,
+        "is_month_start": 0,
+        "is_month_end": 0,
+        "dow_sin": 0.0,
+        "dow_cos": 0.0,
+        "month_sin": 0.0,
+        "month_cos": 0.0,
+        "trend": 1600,
+        "is_holiday": 0,
+        "is_christmas": 0,
+        "is_newyear": 0,
+        "is_black_friday": 0,
+        "transactions": 500.0,
+        "oil_price": 50.0,
         # промо-признаки (если модель их ждёт)
         "onpromotion": 0.0,
-        "onpromotion_lag_7": 0.0, "onpromotion_lag_14": 0.0, "onpromotion_lag_28": 0.0,
-        "onpromotion_rollmean_7": 0.0, "onpromotion_rollstd_7": 0.0,
-        "onpromotion_rollmean_30": 0.0, "onpromotion_rollstd_30": 0.0,
-        "sales_lag_7": 5.0, "sales_lag_14": 4.0, "sales_lag_28": 6.0,
-        "sales_rollmean_7": 5.0, "sales_rollstd_7": 1.2,
-        "sales_rollmean_30": 5.3, "sales_rollstd_30": 1.5,
-        "cluster": 13
+        "onpromotion_lag_7": 0.0,
+        "onpromotion_lag_14": 0.0,
+        "onpromotion_lag_28": 0.0,
+        "onpromotion_rollmean_7": 0.0,
+        "onpromotion_rollstd_7": 0.0,
+        "onpromotion_rollmean_30": 0.0,
+        "onpromotion_rollstd_30": 0.0,
+        "sales_lag_7": 5.0,
+        "sales_lag_14": 4.0,
+        "sales_lag_28": 6.0,
+        "sales_rollmean_7": 5.0,
+        "sales_rollstd_7": 1.2,
+        "sales_rollmean_30": 5.3,
+        "sales_rollstd_30": 1.5,
+        "cluster": 13,
     }
     # Держим буфер текста фич отдельно от ключа виджета, чтобы можно было программно обновлять
-    if 'features_text_buf' not in st.session_state:
-        st.session_state['features_text_buf'] = json.dumps(default_features, indent=2)
-    features_text = st.text_area("features (JSON)", value=st.session_state['features_text_buf'], height=240)
-    if features_text != st.session_state['features_text_buf']:
-        st.session_state['features_text_buf'] = features_text
+    if "features_text_buf" not in st.session_state:
+        st.session_state["features_text_buf"] = json.dumps(default_features, indent=2)
+    features_text = st.text_area(
+        "features (JSON)", value=st.session_state["features_text_buf"], height=240
+    )
+    if features_text != st.session_state["features_text_buf"]:
+        st.session_state["features_text_buf"] = features_text
 
-    if st.button("Автозаполнить фичи по последней дате", help="Считать data_raw/*, сделать make_features и подставить последнюю строку для выбранной пары"):
+    if st.button(
+        "Автозаполнить фичи по последней дате",
+        help="Считать data_raw/*, сделать make_features и подставить последнюю строку для выбранной пары",
+    ):
         try:
             # Загрузка данных
-            paths = {k: Path("data_raw")/f"{k}.csv" for k in ["train","transactions","oil","holidays_events","stores"]}
+            paths = {
+                k: Path("data_raw") / f"{k}.csv"
+                for k in ["train", "transactions", "oil", "holidays_events", "stores"]
+            }
             if not all(p.exists() for p in paths.values()):
-                st.warning("Не найдены все файлы из data_raw. Нужны: train, transactions, oil, holidays_events, stores")
+                st.warning(
+                    "Не найдены все файлы из data_raw. Нужны: train, transactions, oil, holidays_events, stores"
+                )
             else:
                 train_df = pd.read_csv(paths["train"], parse_dates=["date"])
                 trans_df = pd.read_csv(paths["transactions"], parse_dates=["date"])
                 oil_df = pd.read_csv(paths["oil"], parse_dates=["date"])
                 hol_df = pd.read_csv(paths["holidays_events"], parse_dates=["date"])
                 stores_df = pd.read_csv(paths["stores"])
-                Xf, _ = make_features(train_df, hol_df, trans_df, oil_df, stores_df, dropna_target=False)
+                make_features = get_make_features()
+                Xf, _ = make_features(
+                    train_df, hol_df, trans_df, oil_df, stores_df, dropna_target=False
+                )
                 mask = (Xf["store_nbr"] == int(store_nbr)) & (Xf["family"] == family)
                 sub = Xf.loc[mask].sort_values("date")
                 if sub.empty:
                     st.warning("Нет данных для такой пары store/family.")
                 else:
                     # Загружаем модель, чтобы знать список фич
-                    model_path = Path("models") / f"{int(store_nbr)}__{str(family).replace(' ', '_')}.joblib"
+                    model_path = (
+                        Path("models") / f"{int(store_nbr)}__{str(family).replace(' ', '_')}.joblib"
+                    )
                     if not model_path.exists():
                         st.warning("Модель не найдена, но подставлю все доступные фичи.")
-                        feat_names = [c for c in sub.columns if c not in ("id","sales","date")]
+                        feat_names = [c for c in sub.columns if c not in ("id", "sales", "date")]
                     else:
                         mdl = joblib.load(model_path)
                         feat_names = getattr(mdl, "feature_name_", None)
@@ -192,7 +261,9 @@ with col2:
                             except Exception:
                                 feat_names = None
                         if not feat_names:
-                            feat_names = [c for c in sub.columns if c not in ("id","sales","date")]
+                            feat_names = [
+                                c for c in sub.columns if c not in ("id", "sales", "date")
+                            ]
                     # Готовим словарь фич для API: только числовые значения, строки → 0.0
                     last_row = sub.iloc[-1]
                     feats = {}
@@ -205,10 +276,16 @@ with col2:
                                 feats[name] = float(val)
                             else:
                                 # строковые/категориальные признаки не кодируем — оставляем 0.0
-                                feats[name] = float(str(val)) if str(val).replace('.', '', 1).isdigit() else 0.0
+                                feats[name] = (
+                                    float(str(val))
+                                    if str(val).replace(".", "", 1).isdigit()
+                                    else 0.0
+                                )
                         except Exception:
                             feats[name] = 0.0
-                    st.session_state['features_text_buf'] = json.dumps(feats, ensure_ascii=False, indent=2)
+                    st.session_state["features_text_buf"] = json.dumps(
+                        feats, ensure_ascii=False, indent=2
+                    )
                     st.success("Фичи подставлены из последней доступной даты.")
                     # Перерисовать, чтобы отобразить новые фичи в text_area
                     try:
@@ -220,7 +297,7 @@ with col2:
 
 if st.button("Спрогнозировать через API", type="primary"):
     try:
-        feats = json.loads(st.session_state.get('features_text_buf', features_text))
+        feats = json.loads(st.session_state.get("features_text_buf", features_text))
         payload = {"store_nbr": int(store_nbr), "family": family, "features": feats}
         r = requests.post(f"{API_URL}/predict_demand", json=payload, timeout=10)
         if r.ok:
@@ -245,7 +322,12 @@ with colA:
         store_bt = st.number_input("store_nbr (bt)", min_value=1, step=1, value=1, key="store_bt")
 with colB:
     if (available_models_df is not None) and (not available_models_df.empty):
-        fam_opts_bt = sorted(available_models_df.loc[available_models_df["store_nbr"] == int(store_bt), "family"].dropna().unique().tolist())
+        fam_opts_bt = sorted(
+            available_models_df.loc[available_models_df["store_nbr"] == int(store_bt), "family"]
+            .dropna()
+            .unique()
+            .tolist()
+        )
         if not fam_opts_bt:
             fam_opts_bt = ["AUTOMOTIVE"]
         family_bt = st.selectbox("family (bt)", fam_opts_bt, index=0, key="family_bt_sel")
@@ -255,13 +337,18 @@ with colC:
     back_days = st.number_input("Дней в хвосте", min_value=14, max_value=180, value=60, step=7)
 show_xgbps_bt = st.checkbox("Показывать XGB per-SKU (если есть)", value=True)
 
-paths = {k: Path("data_raw")/f"{k}.csv" for k in ["train","transactions","oil","holidays_events","stores"]}
-missing = [k for k,p in paths.items() if not p.exists()]
+paths = {
+    k: Path("data_raw") / f"{k}.csv"
+    for k in ["train", "transactions", "oil", "holidays_events", "stores"]
+}
+missing = [k for k, p in paths.items() if not p.exists()]
 if missing:
     st.warning(f"Нет файлов: {', '.join(missing)}")
 else:
     model_path = Path("models") / f"{int(store_bt)}__{str(family_bt).replace(' ', '_')}.joblib"
-    xgb_ps_path = Path("models") / f"{int(store_bt)}__{str(family_bt).replace(' ', '_')}__xgb.joblib"
+    xgb_ps_path = (
+        Path("models") / f"{int(store_bt)}__{str(family_bt).replace(' ', '_')}__xgb.joblib"
+    )
     use_catboost_fallback = False
     if not model_path.exists():
         # Фолбэк: глобальная CatBoost
@@ -269,10 +356,13 @@ else:
         if cb_path.exists():
             try:
                 from catboost import CatBoostRegressor
+
                 model = CatBoostRegressor()
                 model.load_model(str(cb_path))
                 use_catboost_fallback = True
-                st.info(f"Per-SKU модель не найдена ({model_path.name}). Использую глобальную CatBoost.")
+                st.info(
+                    f"Per-SKU модель не найдена ({model_path.name}). Использую глобальную CatBoost."
+                )
             except Exception as e:
                 st.error(f"Модель не найдена: {model_path} и не удалось загрузить CatBoost: {e}")
                 model = None
@@ -286,8 +376,9 @@ else:
     oil_df = pd.read_csv(paths["oil"], parse_dates=["date"])
     hol_df = pd.read_csv(paths["holidays_events"], parse_dates=["date"])
     stores_df = pd.read_csv(paths["stores"])
+    make_features = get_make_features()
     Xfull, yfull = make_features(train_df, hol_df, trans_df, oil_df, stores_df, dropna_target=True)
-    for c in ["store_nbr","family","type","city","state","cluster","is_holiday"]:
+    for c in ["store_nbr", "family", "type", "city", "state", "cluster", "is_holiday"]:
         if c in Xfull.columns:
             Xfull[c] = Xfull[c].astype("category")
     mask_pair = (Xfull["store_nbr"] == int(store_bt)) & (Xfull["family"] == family_bt)
@@ -297,8 +388,10 @@ else:
     else:
         feat_names = getattr(model, "feature_name_", None)
         if feat_names is None and hasattr(model, "booster_"):
-            try: feat_names = list(model.booster_.feature_name())
-            except: feat_names = None
+            try:
+                feat_names = list(model.booster_.feature_name())
+            except Exception:
+                feat_names = None
             # Для CatBoost фолбэка пытаемся использовать список фич из metrics_global_catboost.json
             if use_catboost_fallback and (feat_names is None):
                 cb_feat = None
@@ -308,15 +401,22 @@ else:
                         cb_feat = json.loads(meta_path.read_text(encoding="utf-8")).get("features")
                     except Exception:
                         cb_feat = None
-                feat_names = cb_feat or [c for c in df_pair.columns if c not in ("id","sales","date") and not np.issubdtype(df_pair[c].dtype, np.datetime64)]
+                feat_names = cb_feat or [
+                    c
+                    for c in df_pair.columns
+                    if c not in ("id", "sales", "date")
+                    and not np.issubdtype(df_pair[c].dtype, np.datetime64)
+                ]
 
             if feat_names is None:
                 st.error("Не удалось получить список фич модели.")
             else:
                 for f in feat_names:
-                    if f not in df_pair.columns: df_pair[f] = 0.0
+                    if f not in df_pair.columns:
+                        df_pair[f] = 0.0
                 tail = df_pair.tail(int(back_days)).copy()
-                X_tail = tail[feat_names]; y_tail = tail["sales"].values
+                X_tail = tail[feat_names]
+                y_tail = tail["sales"].values
                 # Прогноз базовой (point) модели или CatBoost
                 try:
                     y_pred = model.predict(X_tail)
@@ -329,7 +429,7 @@ else:
                 if xgb_ps_path.exists():
                     try:
                         mdl_xgb_ps = joblib.load(xgb_ps_path)
-                        feat_xps = getattr(mdl_xgb_ps, 'feature_names_in_', None)
+                        feat_xps = getattr(mdl_xgb_ps, "feature_names_in_", None)
                         cols_xps = list(feat_xps) if feat_xps is not None else feat_names
                         for f in cols_xps:
                             if f not in tail.columns:
@@ -339,8 +439,14 @@ else:
                     except Exception:
                         y_pred_xgb = None
                 # Попытка загрузить квантильные модели P50 и P90 для построения коридора
-                q50_path = Path("models") / f"{int(store_bt)}__{str(family_bt).replace(' ', '_')}__q50.joblib"
-                q90_path = Path("models") / f"{int(store_bt)}__{str(family_bt).replace(' ', '_')}__q90.joblib"
+                q50_path = (
+                    Path("models")
+                    / f"{int(store_bt)}__{str(family_bt).replace(' ', '_')}__q50.joblib"
+                )
+                q90_path = (
+                    Path("models")
+                    / f"{int(store_bt)}__{str(family_bt).replace(' ', '_')}__q90.joblib"
+                )
                 q50_pred = q90_pred = None
                 if not use_catboost_fallback:  # квантили есть только у per-SKU моделей
                     try:
@@ -353,28 +459,52 @@ else:
                     except Exception as e:
                         st.warning(f"Квантильные модели не удалось применить: {e}")
                 import matplotlib.pyplot as plt
+
                 # Вкладка с графиком по дням и вкладка с агрегированием по времени
                 tabs = st.tabs(["По дням", "Агрегации (недели/месяцы)"])
 
                 # Вкладка 1: По дням
                 with tabs[0]:
-                    fig1 = plt.figure(figsize=(12,4))
+                    fig1 = plt.figure(figsize=(12, 4))
                     plt.plot(tail["date"], y_tail, label="Факт")
                     plt.plot(tail["date"], y_pred, label="Прогноз (LGBM/CatBoost)")
                     if y_pred_xgb is not None and show_xgbps_bt:
                         plt.plot(tail["date"], y_pred_xgb, label="XGBoost per-SKU")
                     # Если доступны квантильные прогнозы — рисуем коридор
                     if q50_pred is not None and q90_pred is not None:
-                        plt.fill_between(tail["date"], q50_pred, q90_pred, color="orange", alpha=0.25, label="P50–P90")
+                        plt.fill_between(
+                            tail["date"],
+                            q50_pred,
+                            q90_pred,
+                            color="orange",
+                            alpha=0.25,
+                            label="P50–P90",
+                        )
                     title = "Продажи: факт vs прогноз"
-                    if 'use_catboost_fallback' in locals() and use_catboost_fallback:
+                    if "use_catboost_fallback" in locals() and use_catboost_fallback:
                         title += " — CatBoost fallback"
                         # Визуальная пометка на графике
-                        plt.text(0.01, 0.98, "CatBoost fallback", transform=plt.gca().transAxes,
-                                 fontsize=10, va='top', ha='left', color='white',
-                                 bbox=dict(facecolor='#6c757d', alpha=0.8, edgecolor='none', boxstyle='round,pad=0.3'))
-                    plt.title(title); plt.xlabel("Дата"); plt.ylabel("Продажи")
-                    plt.legend(); plt.grid()
+                        plt.text(
+                            0.01,
+                            0.98,
+                            "CatBoost fallback",
+                            transform=plt.gca().transAxes,
+                            fontsize=10,
+                            va="top",
+                            ha="left",
+                            color="white",
+                            bbox=dict(
+                                facecolor="#6c757d",
+                                alpha=0.8,
+                                edgecolor="none",
+                                boxstyle="round,pad=0.3",
+                            ),
+                        )
+                    plt.title(title)
+                    plt.xlabel("Дата")
+                    plt.ylabel("Продажи")
+                    plt.legend()
+                    plt.grid()
                     st.pyplot(fig1)
                 mae = np.mean(np.abs(y_tail - y_pred))
                 denom = np.where(y_tail == 0, 1, y_tail)
@@ -382,14 +512,17 @@ else:
                 st.metric("MAE (tail)", f"{mae:.3f} шт.")
                 st.metric("MAPE (tail, %)", f"{mape:.2f}%")
                 if y_pred_xgb is not None and show_xgbps_bt:
-                        mae_xgb = np.mean(np.abs(y_tail - y_pred_xgb))
-                        mape_xgb = np.mean(np.abs((y_tail - y_pred_xgb) / denom)) * 100.0
-                        st.metric("MAE XGBoost (tail)", f"{mae_xgb:.3f} шт.")
-                        st.metric("MAPE XGBoost (tail, %)", f"{mape_xgb:.2f}%")
+                    mae_xgb = np.mean(np.abs(y_tail - y_pred_xgb))
+                    mape_xgb = np.mean(np.abs((y_tail - y_pred_xgb) / denom)) * 100.0
+                    st.metric("MAE XGBoost (tail)", f"{mae_xgb:.3f} шт.")
+                    st.metric("MAPE XGBoost (tail, %)", f"{mape_xgb:.2f}%")
                 # Метрики для квантильного коридора (по дням), если есть
                 if q50_pred is not None and q90_pred is not None:
                     # доля точек факта внутри [P50, P90]
-                    inside = np.mean((y_tail >= np.minimum(q50_pred, q90_pred)) & (y_tail <= np.maximum(q50_pred, q90_pred)))
+                    inside = np.mean(
+                        (y_tail >= np.minimum(q50_pred, q90_pred))
+                        & (y_tail <= np.maximum(q50_pred, q90_pred))
+                    )
                     avg_width = float(np.mean(np.abs(q90_pred - q50_pred)))
                     st.metric("Доля покрытия факта (P50–P90)", f"{inside*100:.1f}%")
                     st.metric("Средняя ширина коридора", f"{avg_width:.3f} шт.")
@@ -401,11 +534,13 @@ else:
                     agg_mode = st.radio("Агрегирование", ["Сумма", "Среднее"], horizontal=True)
                     freq = "W" if period == "Неделя" else "M"
                     # Готовим DataFrame для агрегации
-                    df_plot = pd.DataFrame({
-                        "date": tail["date"].values,
-                        "y_true": y_tail,
-                        "y_pred": y_pred,
-                    })
+                    df_plot = pd.DataFrame(
+                        {
+                            "date": tail["date"].values,
+                            "y_true": y_tail,
+                            "y_pred": y_pred,
+                        }
+                    )
                     if q50_pred is not None and q90_pred is not None:
                         df_plot["p50"] = q50_pred
                         df_plot["p90"] = q90_pred
@@ -416,25 +551,52 @@ else:
                     else:
                         g = grouped.mean().reset_index()
                     # График агрегатов
-                    fig2 = plt.figure(figsize=(12,4))
+                    fig2 = plt.figure(figsize=(12, 4))
                     plt.plot(g["date"], g["y_true"], label="Факт (agg)")
                     plt.plot(g["date"], g["y_pred"], label="Прогноз (agg)")
                     if y_pred_xgb is not None and show_xgbps_bt:
-                        # агрегируем XGB по выбранному периоду
-                        g_x = (pd.DataFrame({"date": tail["date"].values, "y": y_pred_xgb})
-                                 .set_index("date").groupby(pd.Grouper(freq=freq)).sum().reset_index())
+                        xgb_df = pd.DataFrame({"date": tail["date"].values, "y": y_pred_xgb})
+                        g_x = (
+                            xgb_df.set_index("date")
+                            .groupby(pd.Grouper(freq=freq))
+                            .sum()
+                            .reset_index()
+                        )
                         plt.plot(g_x["date"], g_x["y"], label="XGBoost per-SKU (agg)")
                     if "p50" in g.columns and "p90" in g.columns:
-                        plt.fill_between(g["date"], g["p50"], g["p90"], color="orange", alpha=0.25, label="P50–P90 (agg)")
+                        plt.fill_between(
+                            g["date"],
+                            g["p50"],
+                            g["p90"],
+                            color="orange",
+                            alpha=0.25,
+                            label="P50–P90 (agg)",
+                        )
                     ylabel = "Продажи (сумма)" if agg_mode == "Сумма" else "Продажи (среднее)"
                     agg_title = f"Агрегации по времени: {period.lower()}"
-                    if 'use_catboost_fallback' in locals() and use_catboost_fallback:
+                    if "use_catboost_fallback" in locals() and use_catboost_fallback:
                         agg_title += " — CatBoost fallback"
-                        plt.text(0.01, 0.98, "CatBoost fallback", transform=plt.gca().transAxes,
-                                 fontsize=10, va='top', ha='left', color='white',
-                                 bbox=dict(facecolor='#6c757d', alpha=0.8, edgecolor='none', boxstyle='round,pad=0.3'))
-                    plt.title(agg_title); plt.xlabel("Период"); plt.ylabel(ylabel)
-                    plt.legend(); plt.grid()
+                        plt.text(
+                            0.01,
+                            0.98,
+                            "CatBoost fallback",
+                            transform=plt.gca().transAxes,
+                            fontsize=10,
+                            va="top",
+                            ha="left",
+                            color="white",
+                            bbox=dict(
+                                facecolor="#6c757d",
+                                alpha=0.8,
+                                edgecolor="none",
+                                boxstyle="round,pad=0.3",
+                            ),
+                        )
+                    plt.title(agg_title)
+                    plt.xlabel("Период")
+                    plt.ylabel(ylabel)
+                    plt.legend()
+                    plt.grid()
                     st.pyplot(fig2)
 
                     # Метрики на агрегированном ряду
@@ -470,7 +632,12 @@ else:
             names = getattr(mdl, "feature_name_", [])
             gains = getattr(mdl, "feature_importances_", [])
         import pandas as pd
-        df_fi = pd.DataFrame({"feature": names, "gain": gains}).sort_values("gain", ascending=False).head(15)
+
+        df_fi = (
+            pd.DataFrame({"feature": names, "gain": gains})
+            .sort_values("gain", ascending=False)
+            .head(15)
+        )
         st.dataframe(df_fi, use_container_width=True)
         st.bar_chart(df_fi.set_index("feature"))
     except Exception as e:
@@ -482,21 +649,36 @@ st.markdown("---")
 st.subheader("📦 Расчёт ROP / Safety Stock")
 colp1, colp2 = st.columns(2)
 with colp1:
-    lead_time_days = st.number_input("Lead time (дней)", min_value=1, value=2, step=1, key="lead_time_days")
-    service_level = st.slider("Уровень сервиса", min_value=0.80, max_value=0.99, value=0.95, step=0.01, key="service_level")
+    lead_time_days = st.number_input(
+        "Lead time (дней)", min_value=1, value=2, step=1, key="lead_time_days"
+    )
+    service_level = st.slider(
+        "Уровень сервиса",
+        min_value=0.80,
+        max_value=0.99,
+        value=0.95,
+        step=0.01,
+        key="service_level",
+    )
     calc = st.button("Рассчитать ROP/SS", key="calc_rop")
 with colp2:
-    st.caption("Используются квантильные модели P50/P90, если обучены. Иначе — эвристика σ ≈ 0.25·mean.")
+    st.caption(
+        "Используются квантильные модели P50/P90, если обучены. Иначе — эвристика σ ≈ 0.25·mean."
+    )
 
-if 'features_text_buf' in st.session_state and st.session_state.get('features_text_buf') and st.session_state.get('calc_rop'):
+if (
+    "features_text_buf" in st.session_state
+    and st.session_state.get("features_text_buf")
+    and st.session_state.get("calc_rop")
+):
     try:
-        feats_body = json.loads(st.session_state['features_text_buf'])
+        feats_body = json.loads(st.session_state["features_text_buf"])
         body = {
             "store_nbr": int(store_nbr),
             "family": str(family),
             "features": feats_body,
-            "lead_time_days": int(st.session_state.get('lead_time_days', 2)),
-            "service_level": float(st.session_state.get('service_level', 0.95)),
+            "lead_time_days": int(st.session_state.get("lead_time_days", 2)),
+            "service_level": float(st.session_state.get("service_level", 0.95)),
         }
         r = requests.post(f"{API_URL}/reorder_point", json=body, timeout=10)
         if r.ok:
@@ -506,7 +688,9 @@ if 'features_text_buf' in st.session_state and st.session_state.get('features_te
             m2.metric("Sigma (API), шт.", f"{data['sigma_daily']:.2f}")
             m3.metric("Safety Stock (API), шт.", f"{data['safety_stock']:.2f}")
             m4.metric("ROP (API), шт.", f"{data['reorder_point']:.2f}")
-            st.caption(f"quantiles_used={data.get('quantiles_used', False)} | z={data.get('service_level_z')}")
+            st.caption(
+                f"quantiles_used={data.get('quantiles_used', False)} | z={data.get('service_level_z')}"
+            )
         else:
             st.error(f"Ошибка API: {r.status_code} {r.text}")
     except Exception as e:
@@ -549,14 +733,21 @@ with cols_sh[1]:
     if shap_csv.exists():
         df_shap = pd.read_csv(shap_csv)
         st.dataframe(df_shap.head(25), use_container_width=True)
-        st.download_button("⬇️ Скачать shap_top.csv", data=df_shap.to_csv(index=False).encode('utf-8'), file_name=shap_csv.name, mime='text/csv')
+        st.download_button(
+            "⬇️ Скачать shap_top.csv",
+            data=df_shap.to_csv(index=False).encode("utf-8"),
+            file_name=shap_csv.name,
+            mime="text/csv",
+        )
     else:
         st.info("Таблица SHAP не найдена.")
 
 st.subheader("📂 Просмотр data_raw (первые строки)")
 raw_dir = Path("data_raw")
 if not raw_dir.exists():
-    st.info("Папка data_raw не найдена. Создай и положи CSV: train.csv, transactions.csv, oil.csv, holidays_events.csv, stores.csv")
+    st.info(
+        "Папка data_raw не найдена. Создай и положи CSV: train.csv, transactions.csv, oil.csv, holidays_events.csv, stores.csv"
+    )
 else:
     cols = st.columns(5)
     files = ["train.csv", "transactions.csv", "oil.csv", "holidays_events.csv", "stores.csv"]

@@ -13,12 +13,14 @@ DW_DIR = Path(os.getenv("WAREHOUSE_DIR", "data_dw"))
 METRICS_PATH = DW_DIR / "metrics_per_sku.csv"
 RAW_DIR = Path(os.getenv("RAW_DIR", "data_raw"))
 
+
 @st.cache_data(show_spinner=False)
 def load_metrics():
     if not METRICS_PATH.exists():
         return None
     df = pd.read_csv(METRICS_PATH)
     return df
+
 
 df = load_metrics()
 if df is None or df.empty:
@@ -31,17 +33,29 @@ with cols[0]:
 with cols[1]:
     top_n = st.number_input("Показать топ", min_value=10, max_value=500, value=100, step=10)
 with cols[2]:
-    store_filter = st.multiselect("Фильтр по магазинам", sorted(df["store_nbr"].dropna().unique().tolist()))
+    store_filter = st.multiselect(
+        "Фильтр по магазинам", sorted(df["store_nbr"].dropna().unique().tolist())
+    )
 with cols[3]:
-    family_filter = st.multiselect("Фильтр по семействам", sorted(df["family"].dropna().astype(str).unique().tolist()))
+    family_filter = st.multiselect(
+        "Фильтр по семействам", sorted(df["family"].dropna().astype(str).unique().tolist())
+    )
 with cols[4]:
-    valid_days = st.number_input("valid_days для wMAPE", min_value=7, max_value=90, value=28, step=1, help="Окно holdout, использованное при обучении. Используется для оценки wMAPE.")
+    valid_days = st.number_input(
+        "valid_days для wMAPE",
+        min_value=7,
+        max_value=90,
+        value=28,
+        step=1,
+        help="Окно holdout, использованное при обучении. Используется для оценки wMAPE.",
+    )
 
 sub = df.copy()
 if store_filter:
     sub = sub[sub["store_nbr"].isin(store_filter)]
 if family_filter:
     sub = sub[sub["family"].astype(str).isin(family_filter)]
+
 
 # wMAPE (оценка) на лету: wMAPE ≈ (MAE * N) / sum(y_true) * 100
 # где N — число точек в хвосте; sum(y_true) берём из RAW_DIR/train.csv за последние valid_days
@@ -51,17 +65,24 @@ def _wmape_by_pair(valid_days_: int) -> Optional[pd.DataFrame]:
         train_path = RAW_DIR / "train.csv"
         if not train_path.exists():
             return None
-        tr = pd.read_csv(train_path, parse_dates=["date"])  # ожидаются колонки: date, store_nbr, family, sales
+        tr = pd.read_csv(
+            train_path, parse_dates=["date"]
+        )  # ожидаются колонки: date, store_nbr, family, sales
         max_date = pd.to_datetime(tr["date"]).max()
         threshold = max_date - pd.Timedelta(days=int(valid_days_) - 1)
         tail = tr[pd.to_datetime(tr["date"]) >= threshold]
-        grp = tail.groupby(["store_nbr", "family"], dropna=False).agg(
-            N=("sales", "count"),
-            SUM_Y=("sales", "sum"),
-        ).reset_index()
+        grp = (
+            tail.groupby(["store_nbr", "family"], dropna=False)
+            .agg(
+                N=("sales", "count"),
+                SUM_Y=("sales", "sum"),
+            )
+            .reset_index()
+        )
         return grp
     except Exception:
         return None
+
 
 wm = _wmape_by_pair(int(valid_days))
 if wm is not None and not wm.empty:
@@ -73,7 +94,15 @@ else:
 st.subheader("Худшие пары (по выбранной метрике)")
 lead = sub.sort_values(metric, ascending=False).head(int(top_n))
 lead_display = lead.copy().round(2)
-cols_show = ["store_nbr", "family", "MAE", "MAPE_%", "wMAPE_%_est", "NAIVE_LAG7_MAE", "NAIVE_MA7_MAE"]
+cols_show = [
+    "store_nbr",
+    "family",
+    "MAE",
+    "MAPE_%",
+    "wMAPE_%_est",
+    "NAIVE_LAG7_MAE",
+    "NAIVE_MA7_MAE",
+]
 cols_show = [c for c in cols_show if c in lead.columns]
 st.dataframe(lead_display[cols_show].fillna(""), use_container_width=True)
 st.download_button(

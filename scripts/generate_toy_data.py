@@ -38,52 +38,65 @@ def generate_toy_data(
                 noise = rng.normal(0, 1.5)
                 sales = max(0.0, base + noise)
                 onp = rng.integers(0, 2, dtype=int)
-                rows.append({
-                    "date": d.strftime("%Y-%m-%d"),
-                    "store_nbr": s,
-                    "family": f,
-                    "sales": round(float(sales), 3),
-                    "onpromotion": int(onp),
-                })
+                rows.append(
+                    {
+                        "date": d.strftime("%Y-%m-%d"),
+                        "store_nbr": s,
+                        "family": f,
+                        "sales": round(float(sales), 3),
+                        "onpromotion": int(onp),
+                    }
+                )
     pd.DataFrame(rows).to_csv(out / "train.csv", index=False)
 
     # transactions.csv
     rows = []
     for d in dates:
         for s in stores:
-            rows.append({
-                "date": d.strftime("%Y-%m-%d"),
-                "store_nbr": s,
-                "transactions": int(100 + 5 * s + 10 * (d.dayofweek in (5, 6)))
-            })
+            rows.append(
+                {
+                    "date": d.strftime("%Y-%m-%d"),
+                    "store_nbr": s,
+                    "transactions": int(100 + 5 * s + 10 * (d.dayofweek in (5, 6))),
+                }
+            )
     pd.DataFrame(rows).to_csv(out / "transactions.csv", index=False)
 
     # oil.csv
-    oil = pd.DataFrame({
-        "date": [d.strftime("%Y-%m-%d") for d in dates],
-        "dcoilwtico": 50.0 + 2.0 * np.sin(2 * np.pi * np.arange(len(dates)) / 20.0)
-    })
+    oil = pd.DataFrame(
+        {
+            "date": [d.strftime("%Y-%m-%d") for d in dates],
+            "dcoilwtico": 50.0 + 2.0 * np.sin(2 * np.pi * np.arange(len(dates)) / 20.0),
+        }
+    )
     oil.to_csv(out / "oil.csv", index=False)
 
     # holidays_events.csv
-    hol = pd.DataFrame({
-        "date": [dates[0].strftime("%Y-%m-%d"), (dates[0] + pd.Timedelta(days=14)).strftime("%Y-%m-%d")],
-        "type": ["Holiday", "Holiday"],
-        "locale": ["National", "National"],
-        "locale_name": ["Ecuador", "Ecuador"],
-        "description": ["New Year", "Some Holiday"],
-        "transferred": [False, False],
-    })
+    hol = pd.DataFrame(
+        {
+            "date": [
+                dates[0].strftime("%Y-%m-%d"),
+                (dates[0] + pd.Timedelta(days=14)).strftime("%Y-%m-%d"),
+            ],
+            "type": ["Holiday", "Holiday"],
+            "locale": ["National", "National"],
+            "locale_name": ["Ecuador", "Ecuador"],
+            "description": ["New Year", "Some Holiday"],
+            "transferred": [False, False],
+        }
+    )
     hol.to_csv(out / "holidays_events.csv", index=False)
 
     # stores.csv
-    stores_df = pd.DataFrame({
-        "store_nbr": stores,
-        "city": ["Quito", "Guayaquil"][: len(stores)],
-        "state": ["Pichincha", "Guayas"][: len(stores)],
-        "type": ["A", "B"][: len(stores)],
-        "cluster": list(range(1, len(stores) + 1)),
-    })
+    stores_df = pd.DataFrame(
+        {
+            "store_nbr": stores,
+            "city": ["Quito", "Guayaquil"][: len(stores)],
+            "state": ["Pichincha", "Guayas"][: len(stores)],
+            "type": ["A", "B"][: len(stores)],
+            "cluster": list(range(1, len(stores) + 1)),
+        }
+    )
     stores_df.to_csv(out / "stores.csv", index=False)
 
 
@@ -98,4 +111,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

@@ -32,9 +32,12 @@ from joblib import dump
 try:
     import optuna
 except Exception as e:  # pragma: no cover
-    raise SystemExit("Optuna не установлена. Добавьте optuna в requirements.txt или установите локально.")
+    raise SystemExit(
+        "Optuna не установлена. Добавьте optuna в requirements.txt или установите локально."
+    )
 
 import sys
+
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
@@ -60,17 +63,19 @@ def parse_args():
 
 def select_top_pair(train: pd.DataFrame) -> tuple[int, str]:
     top = (
-        train.groupby(["store_nbr", "family"])['sales']
+        train.groupby(["store_nbr", "family"])["sales"]
         .sum()
         .reset_index()
-        .sort_values('sales', ascending=False)
+        .sort_values("sales", ascending=False)
         .head(1)
     )
     r = top.iloc[0]
     return int(r.store_nbr), str(r.family)
 
 
-def objective_factory(df_pair: pd.DataFrame, cat_cols: list[str], valid_days: int, random_state: int):
+def objective_factory(
+    df_pair: pd.DataFrame, cat_cols: list[str], valid_days: int, random_state: int
+):
     df_pair = df_pair.sort_values("date").reset_index(drop=True)
     y = df_pair["sales"].values
     feat_cols = [c for c in df_pair.columns if c not in {"id", "sales", "date"}]
@@ -98,7 +103,8 @@ def objective_factory(df_pair: pd.DataFrame, cat_cols: list[str], valid_days: in
         }
         model = lgb.LGBMRegressor(**params)
         model.fit(
-            X_tr, y_tr,
+            X_tr,
+            y_tr,
             eval_set=[(X_va, y_va)],
             eval_metric="l1",
             categorical_feature=[c for c in cat_cols if c in feat_cols],
@@ -124,7 +130,11 @@ def main():
     stores = pd.read_csv(args.stores)
 
     X, _ = make_features(train, hol, trans, oil, stores, dropna_target=True)
-    cat_cols = [c for c in ["store_nbr","family","type","city","state","cluster","is_holiday"] if c in X.columns]
+    cat_cols = [
+        c
+        for c in ["store_nbr", "family", "type", "city", "state", "cluster", "is_holiday"]
+        if c in X.columns
+    ]
     for c in cat_cols:
         X[c] = X[c].astype("category")
 
@@ -151,10 +161,13 @@ def main():
 
     # Обучим финальную модель на всех train данных пары, валидация прежняя
     X_tr, y_tr, X_va, y_va, feat_cols = ctx
-    best.update({"objective": "l1", "random_state": args.random_state, "n_jobs": -1, "verbosity": -1})
+    best.update(
+        {"objective": "l1", "random_state": args.random_state, "n_jobs": -1, "verbosity": -1}
+    )
     model = lgb.LGBMRegressor(**best)
     model.fit(
-        X_tr, y_tr,
+        X_tr,
+        y_tr,
         eval_set=[(X_va, y_va)],
         eval_metric="l1",
         categorical_feature=[c for c in cat_cols if c in feat_cols],

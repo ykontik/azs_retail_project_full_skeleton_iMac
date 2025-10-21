@@ -2,10 +2,11 @@ from pathlib import Path
 
 import joblib
 import numpy as np
+import pytest
 from fastapi.testclient import TestClient
 from sklearn.linear_model import LinearRegression
 
-from service.app import app, MODELS_DIR
+from service.app import MODELS_DIR, app
 
 
 def _write_dummy_model(store: int = 1, family: str = "AUTOMOTIVE") -> Path:
@@ -25,6 +26,7 @@ def _write_dummy_model(store: int = 1, family: str = "AUTOMOTIVE") -> Path:
     return path
 
 
+@pytest.mark.unit
 def test_reorder_point_happy_path(monkeypatch):
     # Отключаем авторизацию для тестов
     monkeypatch.setenv("DISABLE_AUTH", "true")
@@ -57,4 +59,3 @@ def test_reorder_point_happy_path(monkeypatch):
         assert k in data, f"missing {k} in response"
     assert data["lead_time_days"] == 2
     assert isinstance(data["reorder_point"], (float, int))
-

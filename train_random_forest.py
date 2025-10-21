@@ -29,7 +29,9 @@ from train_forecast import mape, pick_top_sku, _safe_metrics  # pylint: disable=
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Train per-SKU RandomForest models")
-    parser.add_argument("--train", default=None, help="Путь к train.csv (по умолчанию RAW_DIR/train.csv)")
+    parser.add_argument(
+        "--train", default=None, help="Путь к train.csv (по умолчанию RAW_DIR/train.csv)"
+    )
     parser.add_argument("--transactions", default=None)
     parser.add_argument("--oil", default=None)
     parser.add_argument("--holidays", default=None)
@@ -37,7 +39,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--models_dir", default="models")
     parser.add_argument("--warehouse_dir", default="data_dw")
     parser.add_argument("--top_n_sku", type=int, default=50, help="Сколько пар обучать")
-    parser.add_argument("--top_recent_days", type=int, default=90, help="Окно дней для отбора top-N")
+    parser.add_argument(
+        "--top_recent_days", type=int, default=90, help="Окно дней для отбора top-N"
+    )
     parser.add_argument("--valid_days", type=int, default=28, help="Размер holdout окна")
     parser.add_argument("--random_state", type=int, default=42)
     parser.add_argument("--n_estimators", type=int, default=500)
@@ -196,8 +200,14 @@ def main() -> None:
         # сохраняем список признаков рядом, чтобы UI мог использовать
         feat_path = Path(args.models_dir) / f"{model_stem}__rf.features.json"
         try:
-            feat_names = list(model.feature_names_in_) if hasattr(model, "feature_names_in_") else feature_cols
-            feat_path.write_text(json.dumps(feat_names, ensure_ascii=False, indent=2), encoding="utf-8")
+            feat_names = (
+                list(model.feature_names_in_)
+                if hasattr(model, "feature_names_in_")
+                else feature_cols
+            )
+            feat_path.write_text(
+                json.dumps(feat_names, ensure_ascii=False, indent=2), encoding="utf-8"
+            )
         except Exception:
             pass
         trained += 1
@@ -221,7 +231,9 @@ def main() -> None:
         print(f"OK: RandomForest per-SKU complete. Saved {trained} models.")
         print(f"Метрики → {metrics_path}")
     else:
-        print("WARN: не удалось обучить ни одной пары. Проверьте параметры top_n_sku/top_recent_days/valid_days.")
+        print(
+            "WARN: не удалось обучить ни одной пары. Проверьте параметры top_n_sku/top_recent_days/valid_days."
+        )
 
 
 if __name__ == "__main__":

@@ -1,8 +1,9 @@
 import os
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 import joblib
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import streamlit as st
@@ -19,7 +20,10 @@ DW_DIR = Path(os.getenv("WAREHOUSE_DIR", "data_dw"))
 
 @st.cache_data(show_spinner=False)
 def load_raw():
-    paths = {k: RAW_DIR / f"{k}.csv" for k in ["train", "transactions", "oil", "holidays_events", "stores"]}
+    paths = {
+        k: RAW_DIR / f"{k}.csv"
+        for k in ["train", "transactions", "oil", "holidays_events", "stores"]
+    }
     missing = [k for k, p in paths.items() if not p.exists()]
     if missing:
         return None, missing
@@ -74,9 +78,6 @@ def model_feature_names(model) -> Optional[List[str]]:
     return names
 
 
-from typing import Tuple
-
-
 def load_meta_features() -> Tuple[Optional[List[str]], Optional[List[str]], Optional[List[str]]]:
     cb_feats = None
     cb_cats = None
@@ -85,6 +86,7 @@ def load_meta_features() -> Tuple[Optional[List[str]], Optional[List[str]], Opti
         mcb = DW_DIR / "metrics_global_catboost.json"
         if mcb.exists():
             import json as _json
+
             data = _json.loads(mcb.read_text(encoding="utf-8"))
             cb_feats = data.get("features") if isinstance(data.get("features"), list) else None
             cats = data.get("categoricals")
@@ -95,6 +97,7 @@ def load_meta_features() -> Tuple[Optional[List[str]], Optional[List[str]], Opti
         mxg = DW_DIR / "metrics_global_xgboost.json"
         if mxg.exists():
             import json as _json
+
             data = _json.loads(mxg.read_text(encoding="utf-8"))
             xgb_feats = data.get("features") if isinstance(data.get("features"), list) else None
     except Exception:
@@ -110,8 +113,11 @@ def ensure_columns(df: pd.DataFrame, cols: List[str]) -> pd.DataFrame:
     return X[cols]
 
 
-def predict_catboost(model, df: pd.DataFrame, feature_list: List[str], categoricals: Optional[List[str]]):
+def predict_catboost(
+    model, df: pd.DataFrame, feature_list: List[str], categoricals: Optional[List[str]]
+):
     from catboost import Pool
+
     X = ensure_columns(df, feature_list).copy()
     # CatBoost любит строковые категориальные
     if categoricals:
@@ -163,9 +169,7 @@ models = sorted(
     [
         p
         for p in MODELS_DIR.glob("*.joblib")
-        if "__q" not in p.name
-        and not p.name.startswith("global_")
-        and len(p.stem.split("__")) == 2
+        if "__q" not in p.name and not p.name.startswith("global_") and len(p.stem.split("__")) == 2
     ]
 )
 if not models:
@@ -239,6 +243,7 @@ try:
     cb_path = MODELS_DIR / "global_catboost.cbm"
     if cb_path.exists():
         from catboost import CatBoostRegressor
+
         mdl_cb = CatBoostRegressor()
         mdl_cb.load_model(str(cb_path))
 except Exception as e:
@@ -268,6 +273,7 @@ try:
             fj = MODELS_DIR / f"{base_stem}.features.json"
             if fj.exists():
                 import json as _json
+
                 data = _json.loads(fj.read_text(encoding="utf-8"))
                 if isinstance(data, list):
                     ps_feats = [c for c in data if c in tail.columns]
@@ -286,6 +292,7 @@ try:
             rf_json = MODELS_DIR / f"{base_stem}__rf.features.json"
             if rf_json.exists():
                 import json as _json
+
                 data = _json.loads(rf_json.read_text(encoding="utf-8"))
                 if isinstance(data, list):
                     rf_feats = [c for c in data if isinstance(c, str)]
@@ -345,12 +352,17 @@ if mdl_rf is not None:
 
 
 # График
-import matplotlib.pyplot as plt
-
 x_dates, y_true_agg = agg_series(tail["date"], y_true, period)
 _, y_lgb_agg = agg_series(tail["date"], y_lgb, period)
 fig, ax = plt.subplots(figsize=(18, 7))
-colors = {"fact": "#1f77b4", "lgbm": "#ff7f0e", "cat": "#2ca02c", "xgb": "#d62728", "xgbps": "#17becf", "rf": "#9467bd"}
+colors = {
+    "fact": "#1f77b4",
+    "lgbm": "#ff7f0e",
+    "cat": "#2ca02c",
+    "xgb": "#d62728",
+    "xgbps": "#17becf",
+    "rf": "#9467bd",
+}
 if show_fact and y_true is not None:
     ax.plot(x_dates, y_true_agg, label="Факт", color=colors["fact"], linewidth=2.0)
 if show_lgbm:
@@ -369,7 +381,8 @@ if show_rf and (y_rf is not None):
     ax.plot(x_dates, y_rf_agg, label="RandomForest (per‑SKU)", color=colors["rf"], linewidth=1.7)
 
 ax.set_title(f"Хвост {int(back_days)} дн., период: {period.lower()}")
-ax.set_xlabel("Дата/Период"); ax.set_ylabel("Продажи")
+ax.set_xlabel("Дата/Период")
+ax.set_ylabel("Продажи")
 if ax.lines:
     ax.legend(loc="upper right")
 ax.grid(True)
@@ -377,46 +390,50 @@ fig.tight_layout()
 st.pyplot(fig, clear_figure=True)
 try:
     import matplotlib.pyplot as _plt
+
     _plt.close(fig)
 except Exception:
     pass
 
 
 with st.expander("Диагностика", expanded=False):
-    st.write({
-        "pair": {"store_nbr": int(store_sel), "family": family_sel},
-        "tail_len": len(tail),
-        "tail_dates": {
-            "min": str(tail["date"].min()) if "date" in tail.columns else None,
-            "max": str(tail["date"].max()) if "date" in tail.columns else None,
-        },
-        "lgbm": {"feat_count": len(feat_lgb) if feat_lgb else 0},
-        "catboost": {
-            "available": mdl_cb is not None,
-            "predicted": y_cb is not None,
-            "features_from_meta": bool(cb_feats),
-            "errors": cb_err or err_cb_pred,
-        },
-        "xgb_global": {
-            "available": xgb_global is not None,
-            "predicted": y_xgb is not None,
-            "features_from_meta": bool(xgb_feats),
-            "errors": xgb_err or err_xgb_pred,
-        },
-        "xgb_per_sku": {
-            "available": mdl_xgb_ps is not None,
-            "predicted": y_xgbps is not None,
-            "errors": err_xgbps_pred,
-        },
-        "rf_per_sku": {
-            "available": mdl_rf is not None,
-            "predicted": y_rf is not None,
-            "errors": rf_err or err_rf_pred,
-        },
-    })
+    st.write(
+        {
+            "pair": {"store_nbr": int(store_sel), "family": family_sel},
+            "tail_len": len(tail),
+            "tail_dates": {
+                "min": str(tail["date"].min()) if "date" in tail.columns else None,
+                "max": str(tail["date"].max()) if "date" in tail.columns else None,
+            },
+            "lgbm": {"feat_count": len(feat_lgb) if feat_lgb else 0},
+            "catboost": {
+                "available": mdl_cb is not None,
+                "predicted": y_cb is not None,
+                "features_from_meta": bool(cb_feats),
+                "errors": cb_err or err_cb_pred,
+            },
+            "xgb_global": {
+                "available": xgb_global is not None,
+                "predicted": y_xgb is not None,
+                "features_from_meta": bool(xgb_feats),
+                "errors": xgb_err or err_xgb_pred,
+            },
+            "xgb_per_sku": {
+                "available": mdl_xgb_ps is not None,
+                "predicted": y_xgbps is not None,
+                "errors": err_xgbps_pred,
+            },
+            "rf_per_sku": {
+                "available": mdl_rf is not None,
+                "predicted": y_rf is not None,
+                "errors": rf_err or err_rf_pred,
+            },
+        }
+    )
 
 # Метрики по хвосту (дневные)
 st.subheader("Метрики по хвосту (дневные)")
+
 
 def _mae_mape(y_true_arr, y_pred_arr):
     if y_true_arr is None or y_pred_arr is None:
@@ -427,6 +444,7 @@ def _mae_mape(y_true_arr, y_pred_arr):
     denom = np.where(y_true_arr == 0, 1, y_true_arr)
     mape = float(np.mean(np.abs((y_true_arr - y_pred_arr) / denom)) * 100.0)
     return mae, mape
+
 
 col_m1, col_m2, col_m3, col_m4, col_m5 = st.columns(5)
 mae_l, mape_l = _mae_mape(y_true, y_lgb)
@@ -459,25 +477,36 @@ st.markdown("---")
 st.subheader("Сводные сравнения и выгрузка")
 metric_choice = st.radio("Метрика для сравнения (heatmap)", ["MAE", "MAPE"], horizontal=True)
 dim_choice = st.radio("Разрез Heatmap", ["По магазинам", "По семействам"], horizontal=True)
-max_pairs = st.slider("Ограничить количество пар для расчёта", min_value=10, max_value=300, value=100, step=10)
+max_pairs = st.slider(
+    "Ограничить количество пар для расчёта", min_value=10, max_value=300, value=100, step=10
+)
 
 # Фильтры по семействам и сумме продаж хвоста (как в 03-й странице)
 all_fams = sorted(set(f for _, f in pairs))
-fam_filter = st.multiselect("Фильтр по семействам (для сводной таблицы)", options=all_fams, default=[])
-min_tail_sales = st.number_input("Мин. сумма продаж в хвосте (для включения пары)", min_value=0, value=0, step=10)
+fam_filter = st.multiselect(
+    "Фильтр по семействам (для сводной таблицы)", options=all_fams, default=[]
+)
+min_tail_sales = st.number_input(
+    "Мин. сумма продаж в хвосте (для включения пары)", min_value=0, value=0, step=10
+)
 
 pairs_all = pairs[:max_pairs]
 if fam_filter:
     pairs_all = [p for p in pairs_all if p[1] in fam_filter]
 rows = []
-for (s, f) in pairs_all:
+for s, f in pairs_all:
     try:
         mp = MODELS_DIR / f"{int(s)}__{str(f).replace(' ', '_')}.joblib"
         if not mp.exists():
             continue
         m = joblib.load(mp)
         feats = model_feature_names(m)
-        df_p = Xfull[(Xfull["store_nbr"] == int(s)) & (Xfull["family"] == f)].sort_values("date").tail(int(back_days)).copy()
+        df_p = (
+            Xfull[(Xfull["store_nbr"] == int(s)) & (Xfull["family"] == f)]
+            .sort_values("date")
+            .tail(int(back_days))
+            .copy()
+        )
         if df_p.empty or not feats:
             continue
         for ff in feats:
@@ -509,7 +538,7 @@ for (s, f) in pairs_all:
         if xgbps_path.exists():
             try:
                 mx = joblib.load(xgbps_path)
-                fx = getattr(mx, 'feature_names_in_', None) or feats
+                fx = getattr(mx, "feature_names_in_", None) or feats
                 for ff in fx:
                     if ff not in df_p.columns:
                         df_p[ff] = 0.0
@@ -522,11 +551,12 @@ for (s, f) in pairs_all:
         if rf_path.exists():
             try:
                 mr = joblib.load(rf_path)
-                fr = getattr(mr, 'feature_names_in_', None)
+                fr = getattr(mr, "feature_names_in_", None)
                 if fr is None:
                     rf_json = MODELS_DIR / f"{int(s)}__{str(f).replace(' ', '_')}__rf.features.json"
                     if rf_json.exists():
                         import json as _json
+
                         data = _json.loads(rf_json.read_text(encoding="utf-8"))
                         if isinstance(data, list):
                             fr = [c for c in data if isinstance(c, str)]
@@ -544,13 +574,17 @@ for (s, f) in pairs_all:
         dfw = pd.DataFrame({"date": df_p["date"].values, "y_true": y_t, "y_pred": y_l})
         gw = dfw.set_index("date").groupby(pd.Grouper(freq="W")).sum().reset_index()
         denom_w = np.where(gw["y_true"].values == 0, 1, gw["y_true"].values)
-        weekly_mape_l = float(np.mean(np.abs((gw["y_true"].values - gw["y_pred"].values) / denom_w)) * 100.0)
-        row.update({
-            "LGBM_MAE": round(mae_l, 2),
-            "LGBM_MAPE": round(mape_l, 2),
-            "LGBM_wMAPE": round(wmape_l, 2),
-            "LGBM_wkMAPE": round(weekly_mape_l, 2),
-        })
+        weekly_mape_l = float(
+            np.mean(np.abs((gw["y_true"].values - gw["y_pred"].values) / denom_w)) * 100.0
+        )
+        row.update(
+            {
+                "LGBM_MAE": round(mae_l, 2),
+                "LGBM_MAPE": round(mape_l, 2),
+                "LGBM_wMAPE": round(wmape_l, 2),
+                "LGBM_wkMAPE": round(weekly_mape_l, 2),
+            }
+        )
         if y_c is not None:
             mae_c = float(np.mean(np.abs(y_t - y_c)))
             mape_c = float(np.mean(np.abs((y_t - y_c) / denom)) * 100.0)
@@ -559,15 +593,19 @@ for (s, f) in pairs_all:
             dfw_c = pd.DataFrame({"date": df_p["date"].values, "y_true": y_t, "y_pred": y_c})
             gw_c = dfw_c.set_index("date").groupby(pd.Grouper(freq="W")).sum().reset_index()
             denom_w_c = np.where(gw_c["y_true"].values == 0, 1, gw_c["y_true"].values)
-            weekly_mape_c = float(np.mean(np.abs((gw_c["y_true"].values - gw_c["y_pred"].values) / denom_w_c)) * 100.0)
-            row.update({
-                "CB_MAE": round(mae_c, 2),
-                "CB_MAPE": round(mape_c, 2),
-                "GAIN_CB_vs_LGBM_MAE": round(mae_l - mae_c, 2),
-                "GAIN_CB_vs_LGBM_MAPE": round(mape_l - mape_c, 2),
-                "CB_wMAPE": round(wmape_c, 2),
-                "CB_wkMAPE": round(weekly_mape_c, 2),
-            })
+            weekly_mape_c = float(
+                np.mean(np.abs((gw_c["y_true"].values - gw_c["y_pred"].values) / denom_w_c)) * 100.0
+            )
+            row.update(
+                {
+                    "CB_MAE": round(mae_c, 2),
+                    "CB_MAPE": round(mape_c, 2),
+                    "GAIN_CB_vs_LGBM_MAE": round(mae_l - mae_c, 2),
+                    "GAIN_CB_vs_LGBM_MAPE": round(mape_l - mape_c, 2),
+                    "CB_wMAPE": round(wmape_c, 2),
+                    "CB_wkMAPE": round(weekly_mape_c, 2),
+                }
+            )
         if y_x is not None:
             mae_x = float(np.mean(np.abs(y_t - y_x)))
             mape_x = float(np.mean(np.abs((y_t - y_x) / denom)) * 100.0)
@@ -575,15 +613,19 @@ for (s, f) in pairs_all:
             dfw_x = pd.DataFrame({"date": df_p["date"].values, "y_true": y_t, "y_pred": y_x})
             gw_x = dfw_x.set_index("date").groupby(pd.Grouper(freq="W")).sum().reset_index()
             denom_w_x = np.where(gw_x["y_true"].values == 0, 1, gw_x["y_true"].values)
-            weekly_mape_x = float(np.mean(np.abs((gw_x["y_true"].values - gw_x["y_pred"].values) / denom_w_x)) * 100.0)
-            row.update({
-                "XGB_MAE": round(mae_x, 2),
-                "XGB_MAPE": round(mape_x, 2),
-                "GAIN_XGB_vs_LGBM_MAE": round(mae_l - mae_x, 2),
-                "GAIN_XGB_vs_LGBM_MAPE": round(mape_l - mape_x, 2),
-                "XGB_wMAPE": round(wmape_x, 2),
-                "XGB_wkMAPE": round(weekly_mape_x, 2),
-            })
+            weekly_mape_x = float(
+                np.mean(np.abs((gw_x["y_true"].values - gw_x["y_pred"].values) / denom_w_x)) * 100.0
+            )
+            row.update(
+                {
+                    "XGB_MAE": round(mae_x, 2),
+                    "XGB_MAPE": round(mape_x, 2),
+                    "GAIN_XGB_vs_LGBM_MAE": round(mae_l - mae_x, 2),
+                    "GAIN_XGB_vs_LGBM_MAPE": round(mape_l - mape_x, 2),
+                    "XGB_wMAPE": round(wmape_x, 2),
+                    "XGB_wkMAPE": round(weekly_mape_x, 2),
+                }
+            )
         if y_xps is not None:
             mae_xps = float(np.mean(np.abs(y_t - y_xps)))
             mape_xps = float(np.mean(np.abs((y_t - y_xps) / denom)) * 100.0)
@@ -591,15 +633,20 @@ for (s, f) in pairs_all:
             dfw_xps = pd.DataFrame({"date": df_p["date"].values, "y_true": y_t, "y_pred": y_xps})
             gw_xps = dfw_xps.set_index("date").groupby(pd.Grouper(freq="W")).sum().reset_index()
             denom_w_xps = np.where(gw_xps["y_true"].values == 0, 1, gw_xps["y_true"].values)
-            weekly_mape_xps = float(np.mean(np.abs((gw_xps["y_true"].values - gw_xps["y_pred"].values) / denom_w_xps)) * 100.0)
-            row.update({
-                "XGBps_MAE": round(mae_xps, 2),
-                "XGBps_MAPE": round(mape_xps, 2),
-                "GAIN_XGBps_vs_LGBM_MAE": round(mae_l - mae_xps, 2),
-                "GAIN_XGBps_vs_LGBM_MAPE": round(mape_l - mape_xps, 2),
-                "XGBps_wMAPE": round(wmape_xps, 2),
-                "XGBps_wkMAPE": round(weekly_mape_xps, 2),
-            })
+            weekly_mape_xps = float(
+                np.mean(np.abs((gw_xps["y_true"].values - gw_xps["y_pred"].values) / denom_w_xps))
+                * 100.0
+            )
+            row.update(
+                {
+                    "XGBps_MAE": round(mae_xps, 2),
+                    "XGBps_MAPE": round(mape_xps, 2),
+                    "GAIN_XGBps_vs_LGBM_MAE": round(mae_l - mae_xps, 2),
+                    "GAIN_XGBps_vs_LGBM_MAPE": round(mape_l - mape_xps, 2),
+                    "XGBps_wMAPE": round(wmape_xps, 2),
+                    "XGBps_wkMAPE": round(weekly_mape_xps, 2),
+                }
+            )
         if y_rf_pair is not None:
             mae_rf_pair = float(np.mean(np.abs(y_t - y_rf_pair)))
             mape_rf_pair = float(np.mean(np.abs((y_t - y_rf_pair) / denom)) * 100.0)
@@ -607,15 +654,20 @@ for (s, f) in pairs_all:
             dfw_rf = pd.DataFrame({"date": df_p["date"].values, "y_true": y_t, "y_pred": y_rf_pair})
             gw_rf = dfw_rf.set_index("date").groupby(pd.Grouper(freq="W")).sum().reset_index()
             denom_w_rf = np.where(gw_rf["y_true"].values == 0, 1, gw_rf["y_true"].values)
-            weekly_mape_rf = float(np.mean(np.abs((gw_rf["y_true"].values - gw_rf["y_pred"].values) / denom_w_rf)) * 100.0)
-            row.update({
-                "RF_MAE": round(mae_rf_pair, 2),
-                "RF_MAPE": round(mape_rf_pair, 2),
-                "GAIN_RF_vs_LGBM_MAE": round(mae_l - mae_rf_pair, 2),
-                "GAIN_RF_vs_LGBM_MAPE": round(mape_l - mape_rf_pair, 2),
-                "RF_wMAPE": round(wmape_rf, 2),
-                "RF_wkMAPE": round(weekly_mape_rf, 2),
-            })
+            weekly_mape_rf = float(
+                np.mean(np.abs((gw_rf["y_true"].values - gw_rf["y_pred"].values) / denom_w_rf))
+                * 100.0
+            )
+            row.update(
+                {
+                    "RF_MAE": round(mae_rf_pair, 2),
+                    "RF_MAPE": round(mape_rf_pair, 2),
+                    "GAIN_RF_vs_LGBM_MAE": round(mae_l - mae_rf_pair, 2),
+                    "GAIN_RF_vs_LGBM_MAPE": round(mape_l - mape_rf_pair, 2),
+                    "RF_wMAPE": round(wmape_rf, 2),
+                    "RF_wkMAPE": round(weekly_mape_rf, 2),
+                }
+            )
         rows.append(row)
     except Exception:
         continue
@@ -624,15 +676,25 @@ if rows:
     dfm = pd.DataFrame(rows)
     # Сводка (по магазинам/семействам) с wMAPE и Weekly MAPE + сортировка и выгрузки
     st.subheader("Сводка: агрегаты и сортировка")
-    cols = [c for c in dfm.columns if c.endswith(("_MAE", "_MAPE")) or ("wMAPE" in c) or ("wkMAPE" in c)]
+    cols = [
+        c for c in dfm.columns if c.endswith(("_MAE", "_MAPE")) or ("wMAPE" in c) or ("wkMAPE" in c)
+    ]
     if cols:
         group_mode = st.radio("Группировать сводку", ["По магазинам", "По семьям"], horizontal=True)
         group_col = "store_nbr" if group_mode == "По магазинам" else "family"
         summary = dfm.groupby(group_col)[cols].mean().reset_index()
 
         # Сортировка
-        sort_metric = st.selectbox("Сортировать по метрике", options=cols, index=0, key="sum_sort_metric")
-        sort_order = st.radio("Порядок", ["по убыванию", "по возрастанию"], horizontal=True, index=0, key="sum_sort_order")
+        sort_metric = st.selectbox(
+            "Сортировать по метрике", options=cols, index=0, key="sum_sort_metric"
+        )
+        sort_order = st.radio(
+            "Порядок",
+            ["по убыванию", "по возрастанию"],
+            horizontal=True,
+            index=0,
+            key="sum_sort_order",
+        )
         asc = True if sort_order == "по возрастанию" else False
         summary_sorted = summary.sort_values(sort_metric, ascending=asc)
 
@@ -649,17 +711,28 @@ if rows:
             step=step,
             key="sum_range_slider",
         )
-        summary_filtered = summary_sorted[(summary_sorted[sort_metric] >= rng[0]) & (summary_sorted[sort_metric] <= rng[1])]
+        summary_filtered = summary_sorted[
+            (summary_sorted[sort_metric] >= rng[0]) & (summary_sorted[sort_metric] <= rng[1])
+        ]
 
         # Top‑N после фильтрации
-        top_n = st.number_input("Показать топ‑N строк", min_value=1, max_value=1000, value=min(50, len(summary_filtered)), step=1, key="sum_top_n")
+        top_n = st.number_input(
+            "Показать топ‑N строк",
+            min_value=1,
+            max_value=1000,
+            value=min(50, len(summary_filtered)),
+            step=1,
+            key="sum_top_n",
+        )
         summary_view = summary_filtered.head(int(top_n))
         summary_display = summary_view.copy()
         for col in cols:
             if col in summary_display.columns:
                 summary_display[col] = summary_display[col].round(2)
         try:
-            styled = summary_display.style.background_gradient(cmap="YlGnBu", subset=[c for c in cols if ("wMAPE" in c) or ("wkMAPE" in c)])
+            styled = summary_display.style.background_gradient(
+                cmap="YlGnBu", subset=[c for c in cols if ("wMAPE" in c) or ("wkMAPE" in c)]
+            )
             st.dataframe(styled, use_container_width=True)
         except Exception:
             st.dataframe(summary_display, use_container_width=True)
@@ -667,7 +740,11 @@ if rows:
         st.download_button(
             f"⬇️ CSV: сводка ({'stores' if group_col=='store_nbr' else 'families'})",
             data=summary_display.to_csv(index=False).encode("utf-8"),
-            file_name=("summary_per_store_extended.csv" if group_col == "store_nbr" else "summary_per_family_extended.csv"),
+            file_name=(
+                "summary_per_store_extended.csv"
+                if group_col == "store_nbr"
+                else "summary_per_family_extended.csv"
+            ),
             mime="text/csv",
         )
 
@@ -675,33 +752,73 @@ if rows:
     # CatBoost vs LGBM
     if {"GAIN_CB_vs_LGBM_MAE", "GAIN_CB_vs_LGBM_MAPE"}.issubset(dfm.columns):
         val = "GAIN_CB_vs_LGBM_MAE" if metric_choice == "MAE" else "GAIN_CB_vs_LGBM_MAPE"
-        pv = dfm.pivot_table(index=dim_col, columns="family" if dim_col=="store_nbr" else "store_nbr", values=val, aggfunc="mean").fillna(0.0)
+        pv = dfm.pivot_table(
+            index=dim_col,
+            columns="family" if dim_col == "store_nbr" else "store_nbr",
+            values=val,
+            aggfunc="mean",
+        ).fillna(0.0)
         pv_display = pv.round(2)
         st.subheader("Heatmap: CatBoost vs LGBM (положительное = CatBoost лучше)")
         st.dataframe(pv_display.style.background_gradient(cmap="RdYlGn"), use_container_width=True)
-        st.download_button("⬇️ CSV: heatmap CB vs LGBM", data=pv_display.to_csv().encode("utf-8"), file_name="heatmap_cb_vs_lgbm.csv", mime="text/csv")
+        st.download_button(
+            "⬇️ CSV: heatmap CB vs LGBM",
+            data=pv_display.to_csv().encode("utf-8"),
+            file_name="heatmap_cb_vs_lgbm.csv",
+            mime="text/csv",
+        )
     # XGB vs LGBM
     if {"GAIN_XGB_vs_LGBM_MAE", "GAIN_XGB_vs_LGBM_MAPE"}.issubset(dfm.columns):
         val = "GAIN_XGB_vs_LGBM_MAE" if metric_choice == "MAE" else "GAIN_XGB_vs_LGBM_MAPE"
-        pv = dfm.pivot_table(index=dim_col, columns="family" if dim_col=="store_nbr" else "store_nbr", values=val, aggfunc="mean").fillna(0.0)
+        pv = dfm.pivot_table(
+            index=dim_col,
+            columns="family" if dim_col == "store_nbr" else "store_nbr",
+            values=val,
+            aggfunc="mean",
+        ).fillna(0.0)
         pv_display = pv.round(2)
         st.subheader("Heatmap: XGB (global) vs LGBM (положительное = XGB лучше)")
         st.dataframe(pv_display.style.background_gradient(cmap="RdYlGn"), use_container_width=True)
-        st.download_button("⬇️ CSV: heatmap XGB vs LGBM", data=pv_display.to_csv().encode("utf-8"), file_name="heatmap_xgb_vs_lgbm.csv", mime="text/csv")
+        st.download_button(
+            "⬇️ CSV: heatmap XGB vs LGBM",
+            data=pv_display.to_csv().encode("utf-8"),
+            file_name="heatmap_xgb_vs_lgbm.csv",
+            mime="text/csv",
+        )
     # XGB per‑SKU vs LGBM
     if {"GAIN_XGBps_vs_LGBM_MAE", "GAIN_XGBps_vs_LGBM_MAPE"}.issubset(dfm.columns):
         val = "GAIN_XGBps_vs_LGBM_MAE" if metric_choice == "MAE" else "GAIN_XGBps_vs_LGBM_MAPE"
-        pv = dfm.pivot_table(index=dim_col, columns="family" if dim_col=="store_nbr" else "store_nbr", values=val, aggfunc="mean").fillna(0.0)
+        pv = dfm.pivot_table(
+            index=dim_col,
+            columns="family" if dim_col == "store_nbr" else "store_nbr",
+            values=val,
+            aggfunc="mean",
+        ).fillna(0.0)
         pv_display = pv.round(2)
         st.subheader("Heatmap: XGB per‑SKU vs LGBM (положительное = XGB per‑SKU лучше)")
         st.dataframe(pv_display.style.background_gradient(cmap="RdYlGn"), use_container_width=True)
-        st.download_button("⬇️ CSV: heatmap XGB per‑SKU vs LGBM", data=pv_display.to_csv().encode("utf-8"), file_name="heatmap_xgbps_vs_lgbm.csv", mime="text/csv")
+        st.download_button(
+            "⬇️ CSV: heatmap XGB per‑SKU vs LGBM",
+            data=pv_display.to_csv().encode("utf-8"),
+            file_name="heatmap_xgbps_vs_lgbm.csv",
+            mime="text/csv",
+        )
     if {"GAIN_RF_vs_LGBM_MAE", "GAIN_RF_vs_LGBM_MAPE"}.issubset(dfm.columns):
         val = "GAIN_RF_vs_LGBM_MAE" if metric_choice == "MAE" else "GAIN_RF_vs_LGBM_MAPE"
-        pv = dfm.pivot_table(index=dim_col, columns="family" if dim_col=="store_nbr" else "store_nbr", values=val, aggfunc="mean").fillna(0.0)
+        pv = dfm.pivot_table(
+            index=dim_col,
+            columns="family" if dim_col == "store_nbr" else "store_nbr",
+            values=val,
+            aggfunc="mean",
+        ).fillna(0.0)
         pv_display = pv.round(2)
         st.subheader("Heatmap: RandomForest vs LGBM (положительное = RandomForest лучше)")
         st.dataframe(pv_display.style.background_gradient(cmap="RdYlGn"), use_container_width=True)
-        st.download_button("⬇️ CSV: heatmap RF vs LGBM", data=pv_display.to_csv().encode("utf-8"), file_name="heatmap_rf_vs_lgbm.csv", mime="text/csv")
+        st.download_button(
+            "⬇️ CSV: heatmap RF vs LGBM",
+            data=pv_display.to_csv().encode("utf-8"),
+            file_name="heatmap_rf_vs_lgbm.csv",
+            mime="text/csv",
+        )
 else:
     st.info("Недостаточно данных для сводного сравнения. Убедитесь, что модели обучены.")

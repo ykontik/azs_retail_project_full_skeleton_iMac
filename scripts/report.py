@@ -30,10 +30,7 @@ def build_report() -> str:
         .sort_values("MAE")
     )
     agg_family = (
-        df.groupby("family", dropna=True)[["MAE", "MAPE_%"]]
-        .mean()
-        .reset_index()
-        .sort_values("MAE")
+        df.groupby("family", dropna=True)[["MAE", "MAPE_%"]].mean().reset_index().sort_values("MAE")
     )
 
     # Топ худших пар по MAE
@@ -89,4 +86,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

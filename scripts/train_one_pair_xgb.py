@@ -9,12 +9,15 @@ from joblib import dump
 from sklearn.metrics import mean_absolute_error
 from xgboost import XGBRegressor
 
-# Добавляем корень проекта в sys.path ДО импортов локальных модулей
 ROOT = Path(__file__).resolve().parents[1]
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
 
-from make_features import make_features
+
+def _import_make_features():
+    if str(ROOT) not in sys.path:
+        sys.path.insert(0, str(ROOT))
+    from make_features import make_features as _make_features  # noqa: E402
+
+    return _make_features
 
 
 def mape(y_true, y_pred):
@@ -32,6 +35,8 @@ def main():
     p.add_argument("--data_dir", default="data_raw")
     args = p.parse_args()
 
+    make_features = _import_make_features()
+
     data_dir = Path(args.data_dir)
     train = pd.read_csv(data_dir / "train.csv", parse_dates=["date"])
     trans = pd.read_csv(data_dir / "transactions.csv", parse_dates=["date"])
@@ -40,15 +45,15 @@ def main():
     stores = pd.read_csv(data_dir / "stores.csv")
 
     Xfull, _ = make_features(train, hol, trans, oil, stores, dropna_target=True)
-    for c in ["store_nbr","family","type","city","state","cluster","is_holiday"]:
+    for c in ["store_nbr", "family", "type", "city", "state", "cluster", "is_holiday"]:
         if c in Xfull.columns:
             Xfull[c] = Xfull[c].astype("category")
 
-    dt_cols = Xfull.select_dtypes(include=["datetime64[ns]","datetimetz"]).columns.tolist()
+    dt_cols = Xfull.select_dtypes(include=["datetime64[ns]", "datetimetz"]).columns.tolist()
     bool_cols = Xfull.select_dtypes(include=["bool"]).columns.tolist()
     if bool_cols:
         Xfull[bool_cols] = Xfull[bool_cols].astype("int8")
-    exclude = {"id","sales","date",*dt_cols}
+    exclude = {"id", "sales", "date", *dt_cols}
     feat_cols = [c for c in Xfull.columns if c not in exclude]
 
     mask = (Xfull["store_nbr"] == args.store) & (Xfull["family"] == args.family)
@@ -59,7 +64,7 @@ def main():
     X = df[feat_cols]
 
     max_date = df["date"].max()
-    min_valid_date = max_date - pd.Timedelta(days=args.valid_days-1)
+    min_valid_date = max_date - pd.Timedelta(days=args.valid_days - 1)
     mask_val = df["date"] >= min_valid_date
     if mask_val.sum() < 7:
         raise SystemExit("Слишком короткий хвост для валидации (<7 точек). Уменьши --valid_days.")
@@ -92,6 +97,7 @@ def main():
     out = Path(args.models_dir) / f"{args.store}__{args.family.replace(' ', '_')}__xgb.joblib"
     dump(model, out)
     print("Saved →", out)
+
 
 if __name__ == "__main__":
     main()

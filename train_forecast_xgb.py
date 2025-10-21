@@ -36,12 +36,20 @@ def parse_args():
 
 def fill_paths_from_env(args):
     raw_dir = os.getenv("RAW_DIR", "data_raw")
-    def _need(x): return (x is None) or (str(x).strip() == "")
-    if _need(args.train): args.train = str(Path(raw_dir) / "train.csv")
-    if _need(args.transactions): args.transactions = str(Path(raw_dir) / "transactions.csv")
-    if _need(args.oil): args.oil = str(Path(raw_dir) / "oil.csv")
-    if _need(args.holidays): args.holidays = str(Path(raw_dir) / "holidays_events.csv")
-    if _need(args.stores): args.stores = str(Path(raw_dir) / "stores.csv")
+
+    def _need(path_value):
+        return (path_value is None) or (str(path_value).strip() == "")
+
+    if _need(args.train):
+        args.train = str(Path(raw_dir) / "train.csv")
+    if _need(args.transactions):
+        args.transactions = str(Path(raw_dir) / "transactions.csv")
+    if _need(args.oil):
+        args.oil = str(Path(raw_dir) / "oil.csv")
+    if _need(args.holidays):
+        args.holidays = str(Path(raw_dir) / "holidays_events.csv")
+    if _need(args.stores):
+        args.stores = str(Path(raw_dir) / "stores.csv")
     return args
 
 
@@ -49,14 +57,14 @@ def pick_top_sku(df: pd.DataFrame, top_n: int, recent_days: int) -> pd.DataFrame
     df = df.copy()
     if recent_days and recent_days > 0 and "date" in df.columns:
         max_date = pd.to_datetime(df["date"]).max()
-        min_date = max_date - pd.Timedelta(days=recent_days-1)
+        min_date = max_date - pd.Timedelta(days=recent_days - 1)
         df = df[pd.to_datetime(df["date"]) >= min_date]
     return (
-        df.groupby(["store_nbr", "family"])['sales']
-          .sum()
-          .reset_index()
-          .sort_values('sales', ascending=False)
-          .head(top_n)
+        df.groupby(["store_nbr", "family"])["sales"]
+        .sum()
+        .reset_index()
+        .sort_values("sales", ascending=False)
+        .head(top_n)
     )
 
 
@@ -73,19 +81,26 @@ def main():
     stores = pd.read_csv(args.stores)
 
     Xfull, _ = make_features(train, hol, trans, oil, stores, dropna_target=True)
-    for c in ["store_nbr","family","type","city","state","cluster","is_holiday"]:
+    for c in ["store_nbr", "family", "type", "city", "state", "cluster", "is_holiday"]:
         if c in Xfull.columns:
             Xfull[c] = Xfull[c].astype("category")
-    dt_cols = Xfull.select_dtypes(include=["datetime64[ns]","datetimetz"]).columns.tolist()
+    dt_cols = Xfull.select_dtypes(include=["datetime64[ns]", "datetimetz"]).columns.tolist()
     bool_cols = Xfull.select_dtypes(include=["bool"]).columns.tolist()
     if bool_cols:
         Xfull[bool_cols] = Xfull[bool_cols].astype("int8")
-    exclude_cols = {"id","sales","date",*dt_cols}
+    exclude_cols = {"id", "sales", "date", *dt_cols}
     feat_cols = [c for c in Xfull.columns if c not in exclude_cols]
 
-    top_pairs = set(map(tuple, pick_top_sku(train, args.top_n_sku, args.top_recent_days)[["store_nbr","family"]].values.tolist()))
+    top_pairs = set(
+        map(
+            tuple,
+            pick_top_sku(train, args.top_n_sku, args.top_recent_days)[
+                ["store_nbr", "family"]
+            ].values.tolist(),
+        )
+    )
 
-    groups = list(Xfull.groupby(["store_nbr","family"], sort=False, observed=True))
+    groups = list(Xfull.groupby(["store_nbr", "family"], sort=False, observed=True))
     bar = tqdm(groups, desc="Training XGB per-SKU", unit="pair")
     for (store, fam), df_grp in bar:
         if (int(store), str(fam)) not in top_pairs:
@@ -96,7 +111,7 @@ def main():
         y = df_grp["sales"].values
         X = df_grp[feat_cols]
         max_date = df_grp["date"].max()
-        min_valid = max_date - pd.Timedelta(days=args.valid_days-1)
+        min_valid = max_date - pd.Timedelta(days=args.valid_days - 1)
         m_val = df_grp["date"] >= min_valid
         if m_val.sum() < 7:
             continue
@@ -124,8 +139,11 @@ def main():
         # Сохраним список признаков в порядке обучения рядом с моделью
         try:
             import json
+
             feat_path = Path(args.models_dir) / f"{base}.features.json"
-            feat_path.write_text(json.dumps(feat_cols, ensure_ascii=False, indent=2), encoding="utf-8")
+            feat_path.write_text(
+                json.dumps(feat_cols, ensure_ascii=False, indent=2), encoding="utf-8"
+            )
         except Exception:
             pass
 

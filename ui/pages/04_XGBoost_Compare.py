@@ -1,8 +1,10 @@
 import os
+from collections.abc import Sequence
 from pathlib import Path
 from typing import List, Optional
 
 import joblib
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import streamlit as st
@@ -15,9 +17,13 @@ st.title("🆚 Сравнение: Global XGBoost vs per-SKU LGBM")
 RAW_DIR = Path(os.getenv("RAW_DIR", "data_raw"))
 MODELS_DIR = Path(os.getenv("MODELS_DIR", "models"))
 
+
 @st.cache_data(show_spinner=False)
 def load_raw():
-    paths = {k: RAW_DIR / f"{k}.csv" for k in ["train", "transactions", "oil", "holidays_events", "stores"]}
+    paths = {
+        k: RAW_DIR / f"{k}.csv"
+        for k in ["train", "transactions", "oil", "holidays_events", "stores"]
+    }
     missing = [k for k, p in paths.items() if not p.exists()]
     if missing:
         return None, missing
@@ -28,6 +34,7 @@ def load_raw():
     stores = pd.read_csv(paths["stores"])
     return (train, hol, trans, oil, stores), []
 
+
 @st.cache_data(show_spinner=True)
 def build_features():
     data, missing = load_raw()
@@ -35,13 +42,14 @@ def build_features():
         return None, missing
     train, hol, trans, oil, stores = data
     Xfull, _ = make_features(train, hol, trans, oil, stores, dropna_target=True)
-    for c in ["store_nbr","family","type","city","state","cluster","is_holiday"]:
+    for c in ["store_nbr", "family", "type", "city", "state", "cluster", "is_holiday"]:
         if c in Xfull.columns:
             Xfull[c] = Xfull[c].astype("category")
     bool_cols = Xfull.select_dtypes(include=["bool"]).columns.tolist()
     if bool_cols:
         Xfull[bool_cols] = Xfull[bool_cols].astype("int8")
     return Xfull, []
+
 
 def model_feature_names(model) -> Optional[List[str]]:
     names = getattr(model, "feature_name_", None)
@@ -51,6 +59,7 @@ def model_feature_names(model) -> Optional[List[str]]:
         except Exception:
             names = None
     return names
+
 
 def xgb_feature_names(model) -> Optional[List[str]]:
     """Достаёт имена фич из XGBRegressor.
@@ -70,10 +79,10 @@ def xgb_feature_names(model) -> Optional[List[str]]:
         return None
     return None
 
-from collections.abc import Sequence
 
-
-def align_features(df: pd.DataFrame, required: Sequence[str], *, numeric: bool = False) -> pd.DataFrame:
+def align_features(
+    df: pd.DataFrame, required: Sequence[str], *, numeric: bool = False
+) -> pd.DataFrame:
     """Добавляет недостающие колонки (0.0) и переупорядочивает столбцы под модель.
 
     numeric=False — сохраняет типы (для LGBM с категор. фичами)
@@ -91,7 +100,14 @@ def align_features(df: pd.DataFrame, required: Sequence[str], *, numeric: bool =
             pass
     return out
 
-models = sorted([p for p in MODELS_DIR.glob("*.joblib") if ("__q" not in p.name) and ("global_xgboost" not in p.name)])
+
+models = sorted(
+    [
+        p
+        for p in MODELS_DIR.glob("*.joblib")
+        if ("__q" not in p.name) and ("global_xgboost" not in p.name)
+    ]
+)
 if not models:
     st.warning("Нет per-SKU моделей. Запустите обучение.")
     st.stop()
@@ -118,7 +134,9 @@ fam_opts = sorted([f for s, f in pairs if s == store_sel])
 family_sel = st.sidebar.selectbox("family", fam_opts)
 back_days = st.sidebar.slider("Дней в хвосте", min_value=28, max_value=180, value=90, step=7)
 period = st.sidebar.radio("Период", ["День", "Неделя", "Месяц"], index=0)
-min_tail_sales = st.sidebar.number_input("Мин. сумма продаж в хвосте (фильтр пар)", min_value=0, value=0, step=10)
+min_tail_sales = st.sidebar.number_input(
+    "Мин. сумма продаж в хвосте (фильтр пар)", min_value=0, value=0, step=10
+)
 
 Xfull, missing = build_features()
 if Xfull is None:
@@ -155,19 +173,31 @@ feat_xgb = xgb_feature_names(mdl_xgb) or feat_lgb
 X_xgb = align_features(tail, feat_xgb, numeric=True)
 y_xgb = mdl_xgb.predict(X_xgb)
 
+
 def agg_series(dates: pd.Series, y: np.ndarray, how: str):
     if how == "День":
         return dates, y
     freq = "W" if how == "Неделя" else "M"
-    df = pd.DataFrame({"date": dates.values, "y": y}).set_index("date").groupby(pd.Grouper(freq=freq)).sum().reset_index()
+    df = (
+        pd.DataFrame({"date": dates.values, "y": y})
+        .set_index("date")
+        .groupby(pd.Grouper(freq=freq))
+        .sum()
+        .reset_index()
+    )
     return df["date"].values, df["y"].values
 
+
 st.subheader("Метрики (tail)")
+
+
 def _metrics(y_true, y_pred):
     mae = float(np.mean(np.abs(y_true - y_pred)))
     denom = np.where(y_true == 0, 1, y_true)
     mape = float(np.mean(np.abs((y_true - y_pred) / denom)) * 100.0)
     return mae, mape
+
+
 mae_l, mape_l = _metrics(y_true, y_lgb)
 mae_x, mape_x = _metrics(y_true, y_xgb)
 col1, col2 = st.columns(2)
@@ -179,40 +209,51 @@ with col2:
     st.metric("XGBoost — MAPE %", f"{mape_x:.2f}%")
 
 st.subheader("График (tail)")
-import matplotlib.pyplot as plt
-
 x_dates, y_true_agg = agg_series(tail["date"], y_true, period)
 _, y_lgb_agg = agg_series(tail["date"], y_lgb, period)
 _, y_xgb_agg = agg_series(tail["date"], y_xgb, period)
-fig = plt.figure(figsize=(12,4))
+fig = plt.figure(figsize=(12, 4))
 plt.plot(x_dates, y_true_agg, label="Факт")
 plt.plot(x_dates, y_lgb_agg, label="LGBM")
 plt.plot(x_dates, y_xgb_agg, label="XGBoost")
 plt.title(f"Хвост {int(back_days)} дн., период: {period.lower()}")
-plt.xlabel("Дата/Период"); plt.ylabel("Продажи")
-plt.legend(); plt.grid()
+plt.xlabel("Дата/Период")
+plt.ylabel("Продажи")
+plt.legend()
+plt.grid()
 st.pyplot(fig)
 
 st.markdown("---")
 st.subheader("Heatmap: XGBoost vs LGBM (положительное = XGB лучше)")
-max_pairs = st.slider("Пары для heatmap (ограничение)", min_value=10, max_value=300, value=100, step=10)
+max_pairs = st.slider(
+    "Пары для heatmap (ограничение)", min_value=10, max_value=300, value=100, step=10
+)
 pairs_all = pairs[:max_pairs]
 rows = []
 skipped = []
-for (s, f) in pairs_all:
+for s, f in pairs_all:
     try:
         mp = MODELS_DIR / f"{int(s)}__{str(f).replace(' ', '_')}.joblib"
         try:
             m = joblib.load(mp)
         except Exception as e:
-            skipped.append({"store_nbr": s, "family": f, "reason": f"load per-SKU model failed: {e}"})
+            skipped.append(
+                {"store_nbr": s, "family": f, "reason": f"load per-SKU model failed: {e}"}
+            )
             continue
         feats = model_feature_names(m)
-        df_p = Xfull[(Xfull["store_nbr"] == int(s)) & (Xfull["family"] == f)].sort_values("date").tail(int(back_days)).copy()
+        df_p = (
+            Xfull[(Xfull["store_nbr"] == int(s)) & (Xfull["family"] == f)]
+            .sort_values("date")
+            .tail(int(back_days))
+            .copy()
+        )
         if df_p.empty:
-            skipped.append({"store_nbr": s, "family": f, "reason": "empty tail"}); continue
+            skipped.append({"store_nbr": s, "family": f, "reason": "empty tail"})
+            continue
         if not feats:
-            skipped.append({"store_nbr": s, "family": f, "reason": "no LGBM feature names"}); continue
+            skipped.append({"store_nbr": s, "family": f, "reason": "no LGBM feature names"})
+            continue
         # LGBM
         Xl = align_features(df_p, feats, numeric=False)
         # XGB по своему списку признаков
@@ -222,31 +263,37 @@ for (s, f) in pairs_all:
         try:
             y_l = m.predict(Xl)
         except Exception as e:
-            skipped.append({"store_nbr": s, "family": f, "reason": f"LGBM predict failed: {e}"}); continue
+            skipped.append({"store_nbr": s, "family": f, "reason": f"LGBM predict failed: {e}"})
+            continue
         try:
             y_x = mdl_xgb.predict(Xx)
         except Exception as e:
-            skipped.append({"store_nbr": s, "family": f, "reason": f"XGB predict failed: {e}"}); continue
+            skipped.append({"store_nbr": s, "family": f, "reason": f"XGB predict failed: {e}"})
+            continue
         # фильтр по минимальной сумме продаж в хвосте
         tail_sum = float(np.sum(y_t))
         if tail_sum < float(min_tail_sales):
-            skipped.append({"store_nbr": s, "family": f, "reason": f"tail_sum<{min_tail_sales}"}); continue
+            skipped.append({"store_nbr": s, "family": f, "reason": f"tail_sum<{min_tail_sales}"})
+            continue
         mae = float(np.mean(np.abs(y_t - y_l)))
         mape = float(np.mean(np.abs((y_t - y_l) / np.where(y_t == 0, 1, y_t))) * 100.0)
         mae_x = float(np.mean(np.abs(y_t - y_x)))
         mape_x = float(np.mean(np.abs((y_t - y_x) / np.where(y_t == 0, 1, y_t))) * 100.0)
-        rows.append({
-            "store_nbr": int(s),
-            "family": f,
-            "LGBM_MAE": round(mae, 2),
-            "LGBM_MAPE": round(mape, 2),
-            "XGB_MAE": round(mae_x, 2),
-            "XGB_MAPE": round(mape_x, 2),
-            "GAIN_XGB_vs_LGBM_MAE": round(mae - mae_x, 2),
-            "GAIN_XGB_vs_LGBM_MAPE": round(mape - mape_x, 2),
-        })
+        rows.append(
+            {
+                "store_nbr": int(s),
+                "family": f,
+                "LGBM_MAE": round(mae, 2),
+                "LGBM_MAPE": round(mape, 2),
+                "XGB_MAE": round(mae_x, 2),
+                "XGB_MAPE": round(mape_x, 2),
+                "GAIN_XGB_vs_LGBM_MAE": round(mae - mae_x, 2),
+                "GAIN_XGB_vs_LGBM_MAPE": round(mape - mape_x, 2),
+            }
+        )
     except Exception:
-        skipped.append({"store_nbr": s, "family": f, "reason": "unexpected exception"}); continue
+        skipped.append({"store_nbr": s, "family": f, "reason": "unexpected exception"})
+        continue
 
 if rows:
     dfm = pd.DataFrame(rows)
@@ -254,7 +301,12 @@ if rows:
     metric_choice = st.radio("Метрика", ["MAE", "MAPE"], horizontal=True)
     dim_col = "store_nbr" if dim_choice == "По магазинам" else "family"
     val_xgb = "GAIN_XGB_vs_LGBM_MAE" if metric_choice == "MAE" else "GAIN_XGB_vs_LGBM_MAPE"
-    pv_xgb = dfm.pivot_table(index=dim_col, columns="family" if dim_col=="store_nbr" else "store_nbr", values=val_xgb, aggfunc="mean").fillna(0.0)
+    pv_xgb = dfm.pivot_table(
+        index=dim_col,
+        columns="family" if dim_col == "store_nbr" else "store_nbr",
+        values=val_xgb,
+        aggfunc="mean",
+    ).fillna(0.0)
     pv_display = pv_xgb.round(2)
     st.dataframe(pv_display.style.background_gradient(cmap="RdYlGn"), use_container_width=True)
     st.download_button(

@@ -37,4 +37,3 @@ def test_smoke_ready_and_models(monkeypatch):
     assert r.status_code == 200
     data = r.json()
     assert data.get("count", 0) >= 1
-

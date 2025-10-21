@@ -8,7 +8,9 @@ import seaborn as sns  # type: ignore
 
 def main() -> None:
     Path("docs").mkdir(exist_ok=True)
-    df = pd.read_csv("data_raw/train.csv", parse_dates=["date"])  # expects columns: date,sales,[onpromotion]
+    df = pd.read_csv(
+        "data_raw/train.csv", parse_dates=["date"]
+    )  # expects columns: date,sales,[onpromotion]
     df["dow"] = df["date"].dt.dayofweek
     df["month"] = df["date"].dt.month
 
@@ -40,4 +42,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

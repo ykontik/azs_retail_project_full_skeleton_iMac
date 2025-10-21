@@ -75,7 +75,9 @@ def main() -> None:
     print("Экспорт EDA-графиков...")
     rc = run([sys.executable, "scripts/export_eda_cli.py"])
     if rc != 0:
-        print("Не удалось экспортировать EDA-графики. Убедитесь, что установлены matplotlib/seaborn.")
+        print(
+            "Не удалось экспортировать EDA-графики. Убедитесь, что установлены matplotlib/seaborn."
+        )
 
     # 3) SHAP для одной пары (требует установленный shap и наличие модели пары)
     print("SHAP отчёт для одной пары (если есть модель)...")
@@ -99,16 +101,24 @@ def main() -> None:
     ]
     rc = run(shap_cmd)
     if rc != 0:
-        print("SHAP не сформирован. Проверьте, что есть модель в models/{store}__{family}.joblib и установлен shap.")
+        print(
+            "SHAP не сформирован. Проверьте, что есть модель в models/{store}__{family}.joblib и установлен shap."
+        )
 
     # 4) Куда смотреть в презентации
-    docs = ROOT / "docs"
-    wh = ROOT / "data_dw"
     print("\nГотово. Для слайдов используйте артефакты:")
-    print("- docs/eda_seasonality_dow.png, docs/eda_seasonality_month.png, docs/eda_promo_effect.png")
-    print("- data_dw/shap_summary_{STORE}__{FAMILY}.png (если создан)".format(STORE=args.store, FAMILY=str(args.family).replace(" ", "_")))
+    print(
+        "- docs/eda_seasonality_dow.png, docs/eda_seasonality_month.png, docs/eda_promo_effect.png"
+    )
+    print(
+        "- data_dw/shap_summary_{STORE}__{FAMILY}.png (если создан)".format(
+            STORE=args.store, FAMILY=str(args.family).replace(" ", "_")
+        )
+    )
     print("- docs/model_comparison.csv (если сформирован) и data_dw/summary_metrics.txt")
-    print("\nПодсказка: для установки зависимостей используется `make dev-setup` или см. README → Установка.")
+    print(
+        "\nПодсказка: для установки зависимостей используется `make dev-setup` или см. README → Установка."
+    )
 
 
 if __name__ == "__main__":

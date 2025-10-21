@@ -1,24 +1,27 @@
-
-from fastapi import FastAPI, HTTPException, Depends, Request, Response, Security
-from fastapi.security import APIKeyHeader
-from pydantic import BaseModel, Field
-from typing import Dict, List, Optional
-from pathlib import Path
-import pandas as pd
-import joblib
 import os
 from functools import lru_cache
-from dotenv import load_dotenv
+from pathlib import Path
+from typing import Any, Awaitable, Callable, Dict, List, Optional, TYPE_CHECKING
+
+import joblib
 import numpy as np
+import pandas as pd
+from dotenv import load_dotenv
+from fastapi import Depends, FastAPI, HTTPException, Request, Response, Security
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from fastapi.security import APIKeyHeader
+from pydantic import BaseModel, Field
 
 # Метрики Prometheus
+if TYPE_CHECKING:  # только для mypy
+    pass
+
+prom_module: Optional[Any]
 try:
-    from prometheus_client import Counter, Histogram, generate_latest, CONTENT_TYPE_LATEST
-except Exception:
-    Counter = Histogram = None  # типы-заглушки, чтобы модуль работал без зависимости
-    generate_latest = CONTENT_TYPE_LATEST = None
+    import prometheus_client as prom_module
+except Exception:  # pragma: no cover - зависимость опциональна
+    prom_module = None
 
 # Загружаем .env для конфигурации путей и настроек
 load_dotenv()
@@ -84,6 +87,7 @@ app.add_middleware(
 # Схема безопасности для Swagger (добавляет поле X-API-Key в UI)
 api_key_scheme = APIKeyHeader(name="X-API-Key", auto_error=False, description="Секретный ключ API")
 
+
 def _check_api_key(api_key: str | None = Security(api_key_scheme)):
     # Читаем флаги из окружения на каждый вызов, чтобы тесты могли подменять os.environ
     disable_auth = os.getenv("DISABLE_AUTH", "true").lower() in {"1", "true", "yes", "y"}
@@ -93,37 +97,47 @@ def _check_api_key(api_key: str | None = Security(api_key_scheme)):
     if not api_key_cfg or not api_key or api_key != api_key_cfg:
         raise HTTPException(status_code=401, detail="Unauthorized: invalid API key")
 
+
 # Простейшие метрики Prometheus
-if Counter is not None and Histogram is not None:
-    REQ_COUNT = Counter(
+REQ_COUNT: Optional[Any]
+REQ_LATENCY: Optional[Any]
+if prom_module is not None:
+    REQ_COUNT = prom_module.Counter(
         "api_requests_total",
         "Количество запросов",
         ["method", "path", "status"],
     )
-    REQ_LATENCY = Histogram(
+    REQ_LATENCY = prom_module.Histogram(
         "api_request_latency_seconds",
         "Задержка запросов",
         buckets=(0.005, 0.01, 0.02, 0.05, 0.1, 0.25, 0.5, 1, 2, 5),
         labelnames=("method", "path"),
     )
 else:
-    REQ_COUNT = REQ_LATENCY = None
+    REQ_COUNT = None
+    REQ_LATENCY = None
+
 
 @app.middleware("http")
-async def _metrics_middleware(request: Request, call_next):
+async def _metrics_middleware(
+    request: Request, call_next: Callable[[Request], Awaitable[Response]]
+) -> Response:
     # Метрики можно отключить, если отсутствует зависимость
     path = request.url.path
     method = request.method
     if REQ_LATENCY is None:
         response = await call_next(request)
         return response
+    assert REQ_LATENCY is not None  # для mypy
     with REQ_LATENCY.labels(method=method, path=path).time():
-        response: Response = await call_next(request)
+        response = await call_next(request)
     try:
+        assert REQ_COUNT is not None
         REQ_COUNT.labels(method=method, path=path, status=str(response.status_code)).inc()
     except Exception:
         pass
     return response
+
 
 class PredictRequest(BaseModel):
     store_nbr: int
@@ -141,6 +155,7 @@ class PredictRequest(BaseModel):
         }
     }
 
+
 class PredictResponse(BaseModel):
     store_nbr: int
     family: str
@@ -156,6 +171,7 @@ class PredictResponse(BaseModel):
             }
         }
     }
+
 
 class PredictQuantilesResponse(BaseModel):
     store_nbr: int
@@ -173,24 +189,29 @@ class PredictQuantilesResponse(BaseModel):
         }
     }
 
+
 def _model_path(store_nbr: int, family: str) -> Path:
     safe_family = str(family).replace(" ", "_")
     return MODELS_DIR / f"{store_nbr}__{safe_family}.joblib"
 
+
 def _model_key(store_nbr: int, family: str) -> str:
     safe_family = str(family).replace(" ", "_")
     return f"{store_nbr}__{safe_family}"
+
 
 def _quantile_model_path(store_nbr: int, family: str, q: float) -> Path:
     safe_family = str(family).replace(" ", "_")
     qname = int(round(q * 100))
     return MODELS_DIR / f"{store_nbr}__{safe_family}__q{qname}.joblib"
 
+
 # Кеш моделей в памяти (LRU), чтобы не читать файлы при каждом запросе
 @lru_cache(maxsize=512)
 def _load_model_cached(key: str):
     path = MODELS_DIR / f"{key}.joblib"
     return joblib.load(path)
+
 
 def _load_model(store_nbr: int, family: str):
     path = _model_path(store_nbr, family)
@@ -200,6 +221,7 @@ def _load_model(store_nbr: int, family: str):
         return _load_model_cached(_model_key(store_nbr, family))
     except Exception:
         return None
+
 
 def _get_feature_names(model) -> List[str]:
     names = None
@@ -213,6 +235,7 @@ def _get_feature_names(model) -> List[str]:
     elif hasattr(model, "booster_") and hasattr(model.booster_, "feature_name"):
         names = list(model.booster_.feature_name())
     return names or []
+
 
 def _coerce_feature_value(v) -> float:
     """Приведение входного признака к float, чтобы не падать на строках.
@@ -236,6 +259,7 @@ def _coerce_feature_value(v) -> float:
     except Exception:
         return 0.0
 
+
 @app.get(
     "/health",
     tags=["health"],
@@ -246,6 +270,7 @@ def health():
     """Проверка доступности сервиса."""
     return {"status": "ok"}
 
+
 @app.get(
     "/live",
     tags=["health"],
@@ -254,6 +279,7 @@ def health():
 )
 def liveness():
     return {"status": "alive"}
+
 
 @app.get(
     "/ready",
@@ -266,6 +292,7 @@ def readiness():
     any_model = any(MODELS_DIR.glob("*.joblib"))
     ready = metrics_ok or any_model
     return {"ready": ready, "metrics_csv": metrics_ok, "has_models": any_model}
+
 
 @app.get(
     "/version",
@@ -282,6 +309,7 @@ def version():
         "git_sha": os.getenv("GIT_SHA", "unknown"),
     }
 
+
 @app.get(
     "/models",
     tags=["models"],
@@ -295,9 +323,10 @@ def list_models():
         try:
             store, fam = p.stem.split("__", 1)
             files.append({"store_nbr": int(store), "family": fam.replace("_", " "), "path": str(p)})
-        except:
+        except ValueError:
             files.append({"store_nbr": None, "family": p.stem, "path": str(p)})
     return {"count": len(files), "models": files}
+
 
 @app.get(
     "/quantiles_available",
@@ -321,6 +350,7 @@ def quantiles_available(store_nbr: int, family: str, _: None = Depends(_check_ap
     qs = sorted(set(qs))
     return {"store_nbr": store_nbr, "family": family, "quantiles": qs}
 
+
 @app.get(
     "/feature_names",
     tags=["models"],
@@ -335,6 +365,7 @@ def feature_names(store_nbr: int, family: str, _: None = Depends(_check_api_key)
         raise HTTPException(status_code=404, detail="Model not found")
     names = _get_feature_names(model)
     return {"store_nbr": store_nbr, "family": family, "feature_names": names}
+
 
 @app.get(
     "/metrics",
@@ -353,6 +384,7 @@ def get_metrics(_: None = Depends(_check_api_key)):
     df = df.replace({np.nan: None})
     return {"columns": df.columns.tolist(), "rows": df.to_dict(orient="records")}
 
+
 @app.get(
     "/stock_plan",
     tags=["models"],
@@ -370,6 +402,7 @@ def get_stock_plan(_: None = Depends(_check_api_key)):
     df = pd.read_csv(path)
     return {"columns": df.columns.tolist(), "rows": df.to_dict(orient="records")}
 
+
 @app.post(
     "/predict_demand",
     response_model=PredictResponse,
@@ -386,16 +419,22 @@ def predict(req: PredictRequest, _: None = Depends(_check_api_key)):
     """Прогноз спроса по одной паре (store_nbr, family) на основе переданных фич (features)."""
     model = _load_model(req.store_nbr, req.family)
     if model is None:
-        raise HTTPException(status_code=503, detail="Model not found for this (store_nbr, family). Train or adjust TOP_N_SKU.")
+        raise HTTPException(
+            status_code=503,
+            detail="Model not found for this (store_nbr, family). Train or adjust TOP_N_SKU.",
+        )
 
     feat_names = _get_feature_names(model)
     if not feat_names:
-        raise HTTPException(status_code=500, detail="Model has no feature names; retrain with named columns.")
+        raise HTTPException(
+            status_code=500, detail="Model has no feature names; retrain with named columns."
+        )
 
     x = []
     for name in feat_names:
         x.append(_coerce_feature_value(req.features.get(name, 0.0)))
     import numpy as np
+
     X = np.array(x, dtype=float).reshape(1, -1)
 
     try:
@@ -403,7 +442,10 @@ def predict(req: PredictRequest, _: None = Depends(_check_api_key)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Prediction failed: {e}")
 
-    return PredictResponse(store_nbr=req.store_nbr, family=req.family, pred_qty=pred, used_features=feat_names)
+    return PredictResponse(
+        store_nbr=req.store_nbr, family=req.family, pred_qty=pred, used_features=feat_names
+    )
+
 
 @app.post(
     "/predict_bulk",
@@ -417,31 +459,35 @@ def predict_bulk(requests_list: List[PredictRequest], _: None = Depends(_check_a
     for req in requests_list:
         model = _load_model(req.store_nbr, req.family)
         if model is None:
-            responses.append({
-                "store_nbr": req.store_nbr,
-                "family": req.family,
-                "error": "Model not found"
-            })
+            responses.append(
+                {"store_nbr": req.store_nbr, "family": req.family, "error": "Model not found"}
+            )
             continue
         feat_names = _get_feature_names(model)
         x = [_coerce_feature_value(req.features.get(name, 0.0)) for name in feat_names]
         import numpy as np
+
         X = np.array(x, dtype=float).reshape(1, -1)
         try:
             pred = float(model.predict(X)[0])
-            responses.append({
-                "store_nbr": req.store_nbr,
-                "family": req.family,
-                "pred_qty": pred,
-                "used_features": feat_names
-            })
+            responses.append(
+                {
+                    "store_nbr": req.store_nbr,
+                    "family": req.family,
+                    "pred_qty": pred,
+                    "used_features": feat_names,
+                }
+            )
         except Exception as e:
-            responses.append({
-                "store_nbr": req.store_nbr,
-                "family": req.family,
-                "error": f"Prediction failed: {e}"
-            })
+            responses.append(
+                {
+                    "store_nbr": req.store_nbr,
+                    "family": req.family,
+                    "error": f"Prediction failed: {e}",
+                }
+            )
     return {"results": responses}
+
 
 @app.post(
     "/predict_demand_quantiles",
@@ -454,7 +500,9 @@ def predict_bulk(requests_list: List[PredictRequest], _: None = Depends(_check_a
         404: {"description": "Базовая или квантильные модели не найдены"},
     },
 )
-def predict_quantiles(req: PredictRequest, qs: Optional[str] = None, _: None = Depends(_check_api_key)):
+def predict_quantiles(
+    req: PredictRequest, qs: Optional[str] = None, _: None = Depends(_check_api_key)
+):
     """Прогноз по квантилям (например, 0.5 и 0.9). Квантили передаются через параметр `qs`, разделённый запятыми.
 
     Пример: qs=0.5,0.9
@@ -463,7 +511,7 @@ def predict_quantiles(req: PredictRequest, qs: Optional[str] = None, _: None = D
     # Парсим список квантилей
     if qs:
         try:
-            quants = [float(x.strip()) for x in qs.split(',') if x.strip()]
+            quants = [float(x.strip()) for x in qs.split(",") if x.strip()]
         except Exception:
             raise HTTPException(status_code=400, detail="Некорректный формат параметра qs")
     else:
@@ -472,10 +520,13 @@ def predict_quantiles(req: PredictRequest, qs: Optional[str] = None, _: None = D
     # Определяем порядок фич
     base_model = _load_model(req.store_nbr, req.family)
     if base_model is None:
-        raise HTTPException(status_code=404, detail="Базовая модель не найдена. Сначала обучите модель.")
+        raise HTTPException(
+            status_code=404, detail="Базовая модель не найдена. Сначала обучите модель."
+        )
     feat_names = _get_feature_names(base_model)
     x = [_coerce_feature_value(req.features.get(name, 0.0)) for name in feat_names]
     import numpy as np
+
     X = np.array(x, dtype=float).reshape(1, -1)
 
     results: Dict[str, float] = {}
@@ -492,7 +543,10 @@ def predict_quantiles(req: PredictRequest, qs: Optional[str] = None, _: None = D
 
     if not results:
         raise HTTPException(status_code=404, detail="Модели для указанных квантилей не найдены.")
-    return PredictQuantilesResponse(store_nbr=req.store_nbr, family=req.family, quantiles=results, used_features=feat_names)
+    return PredictQuantilesResponse(
+        store_nbr=req.store_nbr, family=req.family, quantiles=results, used_features=feat_names
+    )
+
 
 # ---------------------- БИЗНЕС-МЕТРИКИ: ROP/SS ----------------------
 class ReorderPointRequest(BaseModel):
@@ -501,7 +555,10 @@ class ReorderPointRequest(BaseModel):
     features: Dict[str, float] = Field(default_factory=dict)
     lead_time_days: int = 2
     service_level_z: Optional[float] = None
-    service_level: Optional[float] = Field(default=None, description="Уровень сервиса в [0,1], напр. 0.95")
+    service_level: Optional[float] = Field(
+        default=None, description="Уровень сервиса в [0,1], напр. 0.95"
+    )
+
 
 class ReorderPointResponse(BaseModel):
     store_nbr: int
@@ -514,6 +571,7 @@ class ReorderPointResponse(BaseModel):
     reorder_point: float
     used_features: List[str]
     quantiles_used: bool
+
 
 def _z_from_service_level(p: Optional[float]) -> Optional[float]:
     """Приближение Z по уровню сервиса (без SciPy)."""
@@ -528,6 +586,7 @@ def _z_from_service_level(p: Optional[float]) -> Optional[float]:
     }
     closest = min(table.keys(), key=lambda x: abs(x - p))
     return table[closest]
+
 
 @app.post(
     "/reorder_point",
@@ -545,10 +604,15 @@ def reorder_point(req: ReorderPointRequest, _: None = Depends(_check_api_key)):
 
     feat_names = _get_feature_names(base_model)
     if not feat_names:
-        raise HTTPException(status_code=500, detail="Model has no feature names; retrain with named columns.")
+        raise HTTPException(
+            status_code=500, detail="Model has no feature names; retrain with named columns."
+        )
 
     import numpy as np
-    X = np.array([_coerce_feature_value(req.features.get(n, 0.0)) for n in feat_names], dtype=float).reshape(1, -1)
+
+    X = np.array(
+        [_coerce_feature_value(req.features.get(n, 0.0)) for n in feat_names], dtype=float
+    ).reshape(1, -1)
 
     try:
         daily_mean = float(base_model.predict(X)[0])
@@ -577,12 +641,16 @@ def reorder_point(req: ReorderPointRequest, _: None = Depends(_check_api_key)):
     if sigma_daily is None:
         sigma_daily = max(0.25 * daily_mean, 0.0)
 
-    z = req.service_level_z if (req.service_level_z is not None) else _z_from_service_level(req.service_level or 0.95)
+    z = (
+        req.service_level_z
+        if (req.service_level_z is not None)
+        else _z_from_service_level(req.service_level or 0.95)
+    )
     if z is None:
         z = 1.6449  # 95%
 
     L = max(int(req.lead_time_days), 1)
-    safety_stock = z * sigma_daily * (L ** 0.5)
+    safety_stock = z * sigma_daily * (L**0.5)
     rop = daily_mean * L + safety_stock
 
     return ReorderPointResponse(
@@ -598,6 +666,7 @@ def reorder_point(req: ReorderPointRequest, _: None = Depends(_check_api_key)):
         quantiles_used=quantiles_used,
     )
 
+
 @app.get(
     "/metrics-prom",
     tags=["health"],
@@ -605,7 +674,7 @@ def reorder_point(req: ReorderPointRequest, _: None = Depends(_check_api_key)):
     description="Метрики приложения в формате Prometheus (text/plain)",
 )
 def metrics_prom(_: None = Depends(_check_api_key)):
-    if generate_latest is None:
+    if prom_module is None:
         raise HTTPException(status_code=503, detail="prometheus_client не установлен")
-    data = generate_latest()
-    return Response(content=data, media_type=CONTENT_TYPE_LATEST)
+    data = prom_module.generate_latest()
+    return Response(content=data, media_type=prom_module.CONTENT_TYPE_LATEST)

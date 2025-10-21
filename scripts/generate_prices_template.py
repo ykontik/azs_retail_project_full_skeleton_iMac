@@ -31,9 +31,7 @@ def main():
     if not train_path.exists():
         raise SystemExit(f"Не найден {train_path}")
     df = pd.read_csv(train_path, usecols=["family"])  # быстрее
-    fams = (
-        df["family"].dropna().astype(str).drop_duplicates().sort_values().tolist()
-    )
+    fams = df["family"].dropna().astype(str).drop_duplicates().sort_values().tolist()
     out_path = Path(args.out)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     pd.DataFrame(
@@ -49,4 +47,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

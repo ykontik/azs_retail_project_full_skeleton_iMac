@@ -27,6 +27,7 @@ except Exception:  # pragma: no cover
 
 from make_features import make_features
 
+
 def _prepare_categoricals(df: pd.DataFrame, cat_cols: list[str]) -> pd.DataFrame:
     for c in cat_cols:
         if c in df.columns:
@@ -53,7 +54,9 @@ def main():
     args = parse_args()
     Path(args.warehouse_dir).mkdir(parents=True, exist_ok=True)
 
-    model_path = Path(args.models_dir) / f"{args.store}__{str(args.family).replace(' ', '_')}.joblib"
+    model_path = (
+        Path(args.models_dir) / f"{args.store}__{str(args.family).replace(' ', '_')}.joblib"
+    )
     if not model_path.exists():
         raise SystemExit(f"Модель не найдена: {model_path}")
     model = joblib.load(model_path)
@@ -74,7 +77,8 @@ def main():
         raise SystemExit("Нет данных для пары.")
 
     cat_cols = [
-        c for c in ["store_nbr", "family", "type", "city", "state", "cluster", "is_holiday"]
+        c
+        for c in ["store_nbr", "family", "type", "city", "state", "cluster", "is_holiday"]
         if c in df_pair.columns
     ]
     df_pair = _prepare_categoricals(df_pair, cat_cols)
@@ -90,19 +94,28 @@ def main():
     shap_values = explainer(Xn)
 
     # Сохранить сводные результаты
-    out_png = Path(args.warehouse_dir) / f"shap_summary_{args.store}__{str(args.family).replace(' ', '_')}.png"
+    out_png = (
+        Path(args.warehouse_dir)
+        / f"shap_summary_{args.store}__{str(args.family).replace(' ', '_')}.png"
+    )
     import matplotlib.pyplot as plt
+
     shap.plots.beeswarm(shap_values, show=False, max_display=25)
     plt.tight_layout()
     plt.savefig(out_png, dpi=160)
     plt.close()
 
     # Таблица топ‑фич по средней |SHAP|
-    mean_abs = pd.DataFrame({
-        'feature': feat_names,
-        'mean_abs_shap': np.mean(np.abs(shap_values.values), axis=0),
-    }).sort_values('mean_abs_shap', ascending=False)
-    out_csv = Path(args.warehouse_dir) / f"shap_top_{args.store}__{str(args.family).replace(' ', '_')}.csv"
+    mean_abs = pd.DataFrame(
+        {
+            "feature": feat_names,
+            "mean_abs_shap": np.mean(np.abs(shap_values.values), axis=0),
+        }
+    ).sort_values("mean_abs_shap", ascending=False)
+    out_csv = (
+        Path(args.warehouse_dir)
+        / f"shap_top_{args.store}__{str(args.family).replace(' ', '_')}.csv"
+    )
     mean_abs.to_csv(out_csv, index=False)
     print("Saved:", out_png, out_csv)
 

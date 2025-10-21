@@ -12,6 +12,7 @@
 Зависимости (опционально, устанавливаются вручную):
   pip install skl2onnx onnx onnxruntime onnxmltools lightgbm
 """
+
 from __future__ import annotations
 
 import argparse
@@ -36,8 +37,7 @@ def _load_optional_modules():
         import onnx  # noqa: F401
     except Exception as e:
         raise SystemExit(
-            "Библиотека onnx не установлена. Установите: pip install onnx\n"
-            f"Ошибка: {e}"
+            "Библиотека onnx не установлена. Установите: pip install onnx\n" f"Ошибка: {e}"
         )
     # Квантизация — опционально
     try:
@@ -50,10 +50,8 @@ def _load_optional_modules():
     try:
         import lightgbm as lgb  # noqa: F401
         from onnxmltools import convert_lightgbm  # type: ignore
-        from onnxmltools.convert.common.data_types import FloatTensorType as LGBFloatTensor  # type: ignore
     except Exception:
         convert_lightgbm = None  # type: ignore
-        LGBFloatTensor = FloatTensorType  # fallback
 
     return convert_sklearn, FloatTensorType, quantize_dynamic, QuantType, convert_lightgbm
 
@@ -82,10 +80,16 @@ def main() -> None:
     p.add_argument("--store", type=int, required=True)
     p.add_argument("--family", type=str, required=True)
     p.add_argument("--models_dir", type=str, default="models")
-    p.add_argument("--quantize", action="store_true", help="Сохранить также динамически квантизованную INT8-версию")
+    p.add_argument(
+        "--quantize",
+        action="store_true",
+        help="Сохранить также динамически квантизованную INT8-версию",
+    )
     args = p.parse_args()
 
-    convert_sklearn, FloatTensorType, quantize_dynamic, QuantType, convert_lightgbm = _load_optional_modules()
+    convert_sklearn, FloatTensorType, quantize_dynamic, QuantType, convert_lightgbm = (
+        _load_optional_modules()
+    )
 
     stem = f"{int(args.store)}__{str(args.family).replace(' ', '_')}"
     model_path = Path(args.models_dir) / f"{stem}.joblib"
@@ -105,7 +109,9 @@ def main() -> None:
         feature_names = _infer_feature_names(model)
 
     if not feature_names:
-        raise SystemExit("Не удалось определить список признаков. Сохраните *.features.json при обучении или используйте модель со списком фич.")
+        raise SystemExit(
+            "Не удалось определить список признаков. Сохраните *.features.json при обучении или используйте модель со списком фич."
+        )
 
     n_features = len(feature_names)
     initial_type = [("input", FloatTensorType([None, n_features]))]
@@ -113,6 +119,7 @@ def main() -> None:
     onx = None
     try:
         import lightgbm as lgb  # type: ignore
+
         if isinstance(model, lgb.LGBMRegressor):
             if convert_lightgbm is None:
                 raise SystemExit(
@@ -143,7 +150,9 @@ def main() -> None:
 
     if args.quantize:
         if quantize_dynamic is None:
-            print("onxruntime.quantization недоступен — пропускаю квантизацию. Установите onnxruntime.")
+            print(
+                "onxruntime.quantization недоступен — пропускаю квантизацию. Установите onnxruntime."
+            )
             return
         out_int8 = model_path.with_suffix(".int8.onnx")
         try:

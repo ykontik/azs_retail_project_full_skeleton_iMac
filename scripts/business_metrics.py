@@ -30,8 +30,15 @@ def parse_args():
     p.add_argument("--store", type=int, required=True)
     p.add_argument("--family", type=str, required=True)
     p.add_argument("--price", type=float, required=True, help="Цена за единицу товара")
-    p.add_argument("--margin_rate", type=float, default=0.25, help="Маржинальность (доля) для потерь недопродажи")
-    p.add_argument("--holding_cost", type=float, default=0.05, help="Дневная стоимость хранения за единицу")
+    p.add_argument(
+        "--margin_rate",
+        type=float,
+        default=0.25,
+        help="Маржинальность (доля) для потерь недопродажи",
+    )
+    p.add_argument(
+        "--holding_cost", type=float, default=0.05, help="Дневная стоимость хранения за единицу"
+    )
     p.add_argument("--lead_time_days", type=int, default=2)
     p.add_argument("--service_level", type=float, default=0.95)
     return p.parse_args()
@@ -84,7 +91,9 @@ def main():
         tail = df.tail(30)
         daily_mean = float(tail["sales"].mean())
     else:
-        daily_mean = float(df.tail(30)["sales_lag_1"].mean()) if "sales_lag_1" in df.columns else 0.0
+        daily_mean = (
+            float(df.tail(30)["sales_lag_1"].mean()) if "sales_lag_1" in df.columns else 0.0
+        )
 
     mape_pct = _read_mape(args.store, args.family)
     if mape_pct is None:
@@ -93,7 +102,7 @@ def main():
     sigma = max((mape_pct / 100.0) * daily_mean, 0.0)
     z = _z_from_service_level(args.service_level)
     L = max(int(args.lead_time_days), 1)
-    safety_stock = z * sigma * (L ** 0.5)
+    safety_stock = z * sigma * (L**0.5)
     rop = daily_mean * L + safety_stock
 
     # Приближённые денежные оценки
@@ -113,4 +122,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

@@ -1,4 +1,3 @@
-
 import os
 from pathlib import Path
 
@@ -13,6 +12,7 @@ SERVICE_LEVEL_Z = float(os.getenv("SERVICE_LEVEL_Z", "1.65"))
 OUT_PATH = WAREHOUSE_DIR / "stock_plan.csv"
 WAREHOUSE_DIR.mkdir(parents=True, exist_ok=True)
 
+
 def main():
     feat_path = PARQUET_DIR / "features" / "features.parquet"
     if feat_path.exists():
@@ -24,10 +24,10 @@ def main():
             return
         df = pd.read_csv(raw_train, parse_dates=["date"])
 
-    df = df.sort_values(["store_nbr","family","date"])
+    df = df.sort_values(["store_nbr", "family", "date"])
 
     res = []
-    for (store, fam), grp in df.groupby(["store_nbr","family"]):
+    for (store, fam), grp in df.groupby(["store_nbr", "family"]):
         tail = grp.tail(30)
         if "sales" not in tail.columns:
             continue
@@ -37,17 +37,23 @@ def main():
         ss = SERVICE_LEVEL_Z * daily_std * np.sqrt(LEAD_TIME_DAYS)
         rop = daily_mean * LEAD_TIME_DAYS + ss
 
-        res.append({
-            "store_nbr": store, "family": fam,
-            "daily_mean": daily_mean, "daily_std": daily_std,
-            "lead_time_days": LEAD_TIME_DAYS,
-            "service_z": SERVICE_LEVEL_Z,
-            "safety_stock": ss, "reorder_point": rop
-        })
+        res.append(
+            {
+                "store_nbr": store,
+                "family": fam,
+                "daily_mean": daily_mean,
+                "daily_std": daily_std,
+                "lead_time_days": LEAD_TIME_DAYS,
+                "service_z": SERVICE_LEVEL_Z,
+                "safety_stock": ss,
+                "reorder_point": rop,
+            }
+        )
 
-    out = pd.DataFrame(res).sort_values(["store_nbr","family"])
+    out = pd.DataFrame(res).sort_values(["store_nbr", "family"])
     out.to_csv(OUT_PATH, index=False)
     print("stock_plan →", OUT_PATH)
+
 
 if __name__ == "__main__":
     main()

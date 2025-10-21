@@ -10,21 +10,25 @@ def main() -> None:
     mp = Path("data_dw/metrics_per_sku.csv")
     if mp.exists():
         m = pd.read_csv(mp)
-        rows.append({
-            "model": "LGBM per-SKU",
-            "MAE": float(m["MAE"].mean()),
-            "MAPE": float(m["MAPE_%"].mean()),
-            "size_hint": "joblib per-pair",
-        })
+        rows.append(
+            {
+                "model": "LGBM per-SKU",
+                "MAE": float(m["MAE"].mean()),
+                "MAPE": float(m["MAPE_%"].mean()),
+                "size_hint": "joblib per-pair",
+            }
+        )
     rf = Path("data_dw/metrics_random_forest.csv")
     if rf.exists():
         mrf = pd.read_csv(rf)
-        rows.append({
-            "model": "RandomForest per-SKU",
-            "MAE": float(mrf["MAE"].mean()),
-            "MAPE": float(mrf["MAPE_%"].mean()),
-            "size_hint": "joblib per-pair",
-        })
+        rows.append(
+            {
+                "model": "RandomForest per-SKU",
+                "MAE": float(mrf["MAE"].mean()),
+                "MAPE": float(mrf["MAPE_%"].mean()),
+                "size_hint": "joblib per-pair",
+            }
+        )
     for name, fn in [
         ("CatBoost global", Path("data_dw/metrics_global_catboost.json")),
         ("XGBoost global", Path("data_dw/metrics_global_xgboost.json")),
@@ -32,12 +36,14 @@ def main() -> None:
         if fn.exists():
             try:
                 d = json.loads(fn.read_text(encoding="utf-8"))
-                rows.append({
-                    "model": name,
-                    "MAE": d.get("MAE"),
-                    "MAPE": d.get("MAPE_%"),
-                    "size_hint": "global",
-                })
+                rows.append(
+                    {
+                        "model": name,
+                        "MAE": d.get("MAE"),
+                        "MAPE": d.get("MAPE_%"),
+                        "size_hint": "global",
+                    }
+                )
             except Exception:
                 pass
     out = pd.DataFrame(rows)

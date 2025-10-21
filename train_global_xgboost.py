@@ -46,9 +46,19 @@ def parse_args():
     p.add_argument("--warehouse_dir", default="data_dw")
     p.add_argument("--valid_days", type=int, default=28)
     p.add_argument("--random_state", type=int, default=42)
-    p.add_argument("--log1p_target", action="store_true", help="Учить на log1p(sales) и предсказывать с обратным expm1")
-    p.add_argument("--poisson", action="store_true", help="Использовать objective=count:poisson для счётчиков")
-    p.add_argument("--mape_weighting", action="store_true", help="Веса 1/max(y,1) для MAPE‑ориентированного обучения")
+    p.add_argument(
+        "--log1p_target",
+        action="store_true",
+        help="Учить на log1p(sales) и предсказывать с обратным expm1",
+    )
+    p.add_argument(
+        "--poisson", action="store_true", help="Использовать objective=count:poisson для счётчиков"
+    )
+    p.add_argument(
+        "--mape_weighting",
+        action="store_true",
+        help="Веса 1/max(y,1) для MAPE‑ориентированного обучения",
+    )
     p.add_argument("--n_estimators", type=int, default=1200)
     p.add_argument("--learning_rate", type=float, default=0.05)
     p.add_argument("--max_depth", type=int, default=8)
@@ -61,12 +71,20 @@ def parse_args():
 
 def fill_paths_from_env(args):
     raw_dir = os.getenv("RAW_DIR", "data_raw")
-    def _need(x: Optional[str]) -> bool: return (x is None) or (str(x).strip() == "")
-    if _need(args.train): args.train = str(Path(raw_dir) / "train.csv")
-    if _need(args.transactions): args.transactions = str(Path(raw_dir) / "transactions.csv")
-    if _need(args.oil): args.oil = str(Path(raw_dir) / "oil.csv")
-    if _need(args.holidays): args.holidays = str(Path(raw_dir) / "holidays_events.csv")
-    if _need(args.stores): args.stores = str(Path(raw_dir) / "stores.csv")
+
+    def _need(path_value: Optional[str]) -> bool:
+        return (path_value is None) or (str(path_value).strip() == "")
+
+    if _need(args.train):
+        args.train = str(Path(raw_dir) / "train.csv")
+    if _need(args.transactions):
+        args.transactions = str(Path(raw_dir) / "transactions.csv")
+    if _need(args.oil):
+        args.oil = str(Path(raw_dir) / "oil.csv")
+    if _need(args.holidays):
+        args.holidays = str(Path(raw_dir) / "holidays_events.csv")
+    if _need(args.stores):
+        args.stores = str(Path(raw_dir) / "stores.csv")
     return args
 
 
@@ -77,8 +95,11 @@ def main():
     Path(args.warehouse_dir).mkdir(parents=True, exist_ok=True)
 
     missing = [
-        ("train", args.train), ("transactions", args.transactions), ("oil", args.oil),
-        ("holidays", args.holidays), ("stores", args.stores)
+        ("train", args.train),
+        ("transactions", args.transactions),
+        ("oil", args.oil),
+        ("holidays", args.holidays),
+        ("stores", args.stores),
     ]
     missing = [k for k, p in missing if (p is None) or (not Path(p).exists())]
     if missing:
@@ -102,14 +123,18 @@ def main():
         raise SystemExit("Слишком короткий хвост для валидации (<7 точек). Уменьшите --valid_days.")
 
     # Исключим служебные/дата-колонки
-    feat_cols = [c for c in Xfull.columns if c not in {"id","sales","date"}]
+    feat_cols = [c for c in Xfull.columns if c not in {"id", "sales", "date"}]
     # Переведём категориальные столбцы в pandas.Categorical для XGBoost
-    cat_cols = [c for c in ["store_nbr","family","type","city","state","cluster","is_holiday"] if c in Xfull.columns]
+    cat_cols = [
+        c
+        for c in ["store_nbr", "family", "type", "city", "state", "cluster", "is_holiday"]
+        if c in Xfull.columns
+    ]
     for c in cat_cols:
         if not pd.api.types.is_numeric_dtype(Xfull[c]):
             Xfull[c] = Xfull[c].astype("category")
     # Гарантируем наличие тонких флагов праздников
-    for c in ["is_holiday_national","is_holiday_regional","is_holiday_local"]:
+    for c in ["is_holiday_national", "is_holiday_regional", "is_holiday_local"]:
         if c not in Xfull.columns:
             Xfull[c] = 0
     # Детерминированный порядок признаков, чтобы train/val совпадали
@@ -166,8 +191,14 @@ def main():
     except TypeError:
         try:
             import xgboost as xgb  # type: ignore
+
             if hasattr(xgb, "callback") and hasattr(xgb.callback, "EarlyStopping"):
-                model.fit(**{**fit_kwargs, "callbacks": [xgb.callback.EarlyStopping(rounds=200, save_best=True)]})
+                model.fit(
+                    **{
+                        **fit_kwargs,
+                        "callbacks": [xgb.callback.EarlyStopping(rounds=200, save_best=True)],
+                    }
+                )
             else:
                 model.fit(**fit_kwargs)
         except Exception:
@@ -238,20 +269,24 @@ def main():
             "gamma": args.gamma,
             "subsample": args.subsample,
             "colsample_bytree": args.colsample_bytree,
-        }
+        },
     }
     if naive_mae is not None:
-        metrics.update({
-            "NAIVE7_MAE": naive_mae,
-            "NAIVE7_MAPE_%": naive_mape,
-            "MAE_GAIN_vs_NAIVE7": float(naive_mae - mae),
-        })
+        metrics.update(
+            {
+                "NAIVE7_MAE": naive_mae,
+                "NAIVE7_MAPE_%": naive_mape,
+                "MAE_GAIN_vs_NAIVE7": float(naive_mae - mae),
+            }
+        )
     if ma7_mae is not None:
-        metrics.update({
-            "MA7_MAE": ma7_mae,
-            "MA7_MAPE_%": ma7_mape,
-            "MAE_GAIN_vs_MA7": float(ma7_mae - mae),
-        })
+        metrics.update(
+            {
+                "MA7_MAE": ma7_mae,
+                "MA7_MAPE_%": ma7_mape,
+                "MAE_GAIN_vs_MA7": float(ma7_mae - mae),
+            }
+        )
 
     # Важности фич (gain)
     try:

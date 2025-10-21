@@ -28,11 +28,17 @@ def parse_args():
     p = argparse.ArgumentParser("Business impact report")
     p.add_argument("--train", default="data_raw/train.csv")
     p.add_argument("--metrics", default="data_dw/metrics_per_sku.csv")
-    p.add_argument("--price_csv", default="configs/prices.csv", help="CSV с ценами/маржой по family (и опц. store_nbr)")
+    p.add_argument(
+        "--price_csv",
+        default="configs/prices.csv",
+        help="CSV с ценами/маржой по family (и опц. store_nbr)",
+    )
     p.add_argument("--lead_time_days", type=int, default=2)
     p.add_argument("--service_level", type=float, default=0.95)
     p.add_argument("--tail_days", type=int, default=30, help="Дней для расчёта среднего спроса")
-    p.add_argument("--valid_days", type=int, default=28, help="Дней для расчёта MAPE наивной модели")
+    p.add_argument(
+        "--valid_days", type=int, default=28, help="Дней для расчёта MAPE наивной модели"
+    )
     p.add_argument("--out_csv", default="data_dw/business_impact_report.csv")
     return p.parse_args()
 
@@ -48,7 +54,9 @@ def mape(y_true: np.ndarray, y_pred: np.ndarray) -> float:
     return float(np.mean(np.abs((y_true - y_pred) / denom)) * 100.0)
 
 
-def naive_mape_last(df_pair: pd.DataFrame, valid_days: int = 28, avg_window: int = 7) -> float | None:
+def naive_mape_last(
+    df_pair: pd.DataFrame, valid_days: int = 28, avg_window: int = 7
+) -> float | None:
     df = df_pair.sort_values("date").copy()
     if len(df) < (valid_days + avg_window + 1) or "sales" not in df.columns:
         return None
@@ -69,12 +77,14 @@ def load_prices(price_csv: str) -> pd.DataFrame:
     p = Path(price_csv)
     if not p.exists():
         # Заглушка: одна цена/маржа/хранение для всех
-        return pd.DataFrame({
-            "family": [],
-            "price": [],
-            "margin_rate": [],
-            "holding_cost": [],
-        })
+        return pd.DataFrame(
+            {
+                "family": [],
+                "price": [],
+                "margin_rate": [],
+                "holding_cost": [],
+            }
+        )
     return pd.read_csv(p)
 
 
@@ -114,7 +124,10 @@ def main():
         margin_rate = 0.25
         holding_cost = 0.05
         if not prices.empty:
-            selp = prices[(prices.get("family") == f) & ((prices.get("store_nbr").isna()) if "store_nbr" in prices.columns else True)]
+            selp = prices[
+                (prices.get("family") == f)
+                & ((prices.get("store_nbr").isna()) if "store_nbr" in prices.columns else True)
+            ]
             if not selp.empty:
                 row = selp.iloc[0]
                 price = float(row.get("price", price))
@@ -129,7 +142,7 @@ def main():
         def _ss_rop(sigma: float | None):
             if sigma is None:
                 return None, None
-            ss = z * sigma * (args.lead_time_days ** 0.5)
+            ss = z * sigma * (args.lead_time_days**0.5)
             rop = daily_mean * args.lead_time_days + ss
             return ss, rop
 
@@ -151,31 +164,41 @@ def main():
         under_model, over_model = _under_over(sigma_model, ss_model)
 
         # Экономия (модель против наивной)
-        savings_under = (under_naive - under_model) if (under_naive is not None and under_model is not None) else None
-        savings_over = (over_naive - over_model) if (over_naive is not None and over_model is not None) else None
+        savings_under = (
+            (under_naive - under_model)
+            if (under_naive is not None and under_model is not None)
+            else None
+        )
+        savings_over = (
+            (over_naive - over_model)
+            if (over_naive is not None and over_model is not None)
+            else None
+        )
 
-        rows.append({
-            "store_nbr": s,
-            "family": f,
-            "daily_mean": daily_mean,
-            "naive_MAPE_%": naive,
-            "model_MAPE_%": model_mape,
-            "sigma_naive": sigma_naive,
-            "sigma_model": sigma_model,
-            "SS_naive": ss_naive,
-            "SS_model": ss_model,
-            "ROP_naive": rop_naive,
-            "ROP_model": rop_model,
-            "price": price,
-            "margin_rate": margin_rate,
-            "holding_cost": holding_cost,
-            "under_cost_naive": under_naive,
-            "under_cost_model": under_model,
-            "over_cost_naive": over_naive,
-            "over_cost_model": over_model,
-            "savings_under": savings_under,
-            "savings_over_per_day": savings_over,
-        })
+        rows.append(
+            {
+                "store_nbr": s,
+                "family": f,
+                "daily_mean": daily_mean,
+                "naive_MAPE_%": naive,
+                "model_MAPE_%": model_mape,
+                "sigma_naive": sigma_naive,
+                "sigma_model": sigma_model,
+                "SS_naive": ss_naive,
+                "SS_model": ss_model,
+                "ROP_naive": rop_naive,
+                "ROP_model": rop_model,
+                "price": price,
+                "margin_rate": margin_rate,
+                "holding_cost": holding_cost,
+                "under_cost_naive": under_naive,
+                "under_cost_model": under_model,
+                "over_cost_naive": over_naive,
+                "over_cost_model": over_model,
+                "savings_under": savings_under,
+                "savings_over_per_day": savings_over,
+            }
+        )
 
     out = pd.DataFrame(rows)
     Path(args.out_csv).parent.mkdir(parents=True, exist_ok=True)
@@ -197,4 +220,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

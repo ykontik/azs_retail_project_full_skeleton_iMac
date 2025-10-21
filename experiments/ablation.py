@@ -56,10 +56,10 @@ def pick_top_sku(df: pd.DataFrame, top_n: int, recent_days: int) -> set[tuple[in
         min_date = max_date - pd.Timedelta(days=recent_days - 1)
         df = df[pd.to_datetime(df["date"]) >= min_date]
     top = (
-        df.groupby(["store_nbr", "family"])['sales']
+        df.groupby(["store_nbr", "family"])["sales"]
         .sum()
         .reset_index()
-        .sort_values('sales', ascending=False)
+        .sort_values("sales", ascending=False)
         .head(top_n)
     )
     return set((int(r.store_nbr), str(r.family)) for _, r in top.iterrows())
@@ -68,22 +68,38 @@ def pick_top_sku(df: pd.DataFrame, top_n: int, recent_days: int) -> set[tuple[in
 def feature_groups():
     return {
         "calendar": [
-            "year","month","week","day","dayofweek","is_weekend",
-            "is_month_start","is_month_end","dow_sin","dow_cos","month_sin","month_cos","trend",
+            "year",
+            "month",
+            "week",
+            "day",
+            "dayofweek",
+            "is_weekend",
+            "is_month_start",
+            "is_month_end",
+            "dow_sin",
+            "dow_cos",
+            "month_sin",
+            "month_cos",
+            "trend",
         ],
-        "special_days": ["is_christmas","is_newyear","is_black_friday"],
-        "holidays": ["is_holiday","is_holiday_national","is_holiday_regional","is_holiday_local"],
+        "special_days": ["is_christmas", "is_newyear", "is_black_friday"],
+        "holidays": [
+            "is_holiday",
+            "is_holiday_national",
+            "is_holiday_regional",
+            "is_holiday_local",
+        ],
         "transactions": ["transactions"],
         "oil": ["oil_price"],
-        "lags": ["sales_lag_1","sales_lag_7","sales_lag_14","sales_lag_28"],
-        "rolls": [
-            "sales_rollmean_7","sales_rollstd_7","sales_rollmean_30","sales_rollstd_30"
-        ],
-        "store_meta": ["type","city","state","cluster","store_nbr","family"],
+        "lags": ["sales_lag_1", "sales_lag_7", "sales_lag_14", "sales_lag_28"],
+        "rolls": ["sales_rollmean_7", "sales_rollstd_7", "sales_rollmean_30", "sales_rollstd_30"],
+        "store_meta": ["type", "city", "state", "cluster", "store_nbr", "family"],
     }
 
 
-def train_eval(X: pd.DataFrame, y: np.ndarray, valid_days: int, cat_cols: list[str], random_state: int) -> tuple[float, float, int]:
+def train_eval(
+    X: pd.DataFrame, y: np.ndarray, valid_days: int, cat_cols: list[str], random_state: int
+) -> tuple[float, float, int]:
     df = X.copy()
     df["date"] = pd.to_datetime(df["date"]) if "date" in df.columns else pd.NaT
     df = df.sort_values("date").reset_index(drop=True)
@@ -96,13 +112,19 @@ def train_eval(X: pd.DataFrame, y: np.ndarray, valid_days: int, cat_cols: list[s
     X_tr, y_tr = df.loc[~mask_val], y_series[~mask_val]
     X_va, y_va = df.loc[mask_val], y_series[mask_val]
 
-    feat_cols = [c for c in df.columns if c not in {"id","sales","date"}]
+    feat_cols = [c for c in df.columns if c not in {"id", "sales", "date"}]
     model = lgb.LGBMRegressor(
-        n_estimators=2000, learning_rate=0.05, num_leaves=64,
-        subsample=0.9, colsample_bytree=0.9, random_state=random_state, n_jobs=-1
+        n_estimators=2000,
+        learning_rate=0.05,
+        num_leaves=64,
+        subsample=0.9,
+        colsample_bytree=0.9,
+        random_state=random_state,
+        n_jobs=-1,
     )
     model.fit(
-        X_tr[feat_cols], y_tr,
+        X_tr[feat_cols],
+        y_tr,
         eval_set=[(X_va[feat_cols], y_va)],
         eval_metric="l1",
         categorical_feature=[c for c in cat_cols if c in feat_cols],
@@ -124,11 +146,15 @@ def main():
 
     Xfull, _ = make_features(train, hol, trans, oil, stores, dropna_target=True)
     # Категориальные колонки, аналогично train_forecast
-    cat_cols = [c for c in ["store_nbr","family","type","city","state","cluster","is_holiday"] if c in Xfull.columns]
+    cat_cols = [
+        c
+        for c in ["store_nbr", "family", "type", "city", "state", "cluster", "is_holiday"]
+        if c in Xfull.columns
+    ]
     for c in cat_cols:
         Xfull[c] = Xfull[c].astype("category")
 
-    dt_cols = Xfull.select_dtypes(include=["datetime64[ns]","datetimetz"]).columns.tolist()
+    dt_cols = Xfull.select_dtypes(include=["datetime64[ns]", "datetimetz"]).columns.tolist()
     bool_cols = Xfull.select_dtypes(include=["bool"]).columns.tolist()
     if bool_cols:
         Xfull[bool_cols] = Xfull[bool_cols].astype("int8")
@@ -137,30 +163,49 @@ def main():
     groups = feature_groups()
 
     rows = []
-    groups_iter = list(Xfull.groupby(["store_nbr","family"], sort=False, observed=True))
+    groups_iter = list(Xfull.groupby(["store_nbr", "family"], sort=False, observed=True))
     total_pairs = len(groups_iter)
     t0 = time.perf_counter()
-    bar = tqdm(groups_iter, desc="Ablation per-SKU", unit="pair", total=total_pairs, smoothing=0.3, mininterval=0.5)
+    bar = tqdm(
+        groups_iter,
+        desc="Ablation per-SKU",
+        unit="pair",
+        total=total_pairs,
+        smoothing=0.3,
+        mininterval=0.5,
+    )
     for idx, ((store, fam), df_grp) in enumerate(bar, start=1):
         if (int(store), str(fam)) not in top_pairs:
             # обновим ETA/скорость, чтобы прогресс был стабильным
             elapsed = max(time.perf_counter() - t0, 1e-6)
             speed = idx / elapsed
-            eta = max(total_pairs - idx, 0) / speed if speed > 0 else float('inf')
+            eta = max(total_pairs - idx, 0) / speed if speed > 0 else float("inf")
             bar.set_postfix_str(f"{speed:.2f} pair/s, ETA {eta:.1f}s")
             continue
         df_grp = df_grp.sort_values("date").reset_index(drop=True)
         y = df_grp["sales"].values
         # Базовая модель с полным набором фич
-        base_mae, base_mape, nval = train_eval(df_grp, y, args.valid_days, cat_cols, args.random_state)
-        rows.append({
-            "store_nbr": int(store), "family": str(fam), "setting": "full",
-            "MAE": base_mae, "MAPE_%": base_mape, "n_val": nval,
-        })
+        base_mae, base_mape, nval = train_eval(
+            df_grp, y, args.valid_days, cat_cols, args.random_state
+        )
+        rows.append(
+            {
+                "store_nbr": int(store),
+                "family": str(fam),
+                "setting": "full",
+                "MAE": base_mae,
+                "MAPE_%": base_mape,
+                "n_val": nval,
+            }
+        )
 
         # Ablation: исключаем каждый блок фич по очереди
         inner = list(groups.items())
-        inner_iter = inner if len(inner) <= 1 else tqdm(inner, desc=f"groups {int(store)}/{str(fam)}", unit="grp", leave=False)
+        inner_iter = (
+            inner
+            if len(inner) <= 1
+            else tqdm(inner, desc=f"groups {int(store)}/{str(fam)}", unit="grp", leave=False)
+        )
         for gname, cols in inner_iter:
             df_abl = df_grp.copy()
             drop_cols = [c for c in cols if c in df_abl.columns]
@@ -168,14 +213,20 @@ def main():
                 continue
             df_abl = df_abl.drop(columns=drop_cols)
             mae, mape_v, nval = train_eval(df_abl, y, args.valid_days, cat_cols, args.random_state)
-            rows.append({
-                "store_nbr": int(store), "family": str(fam), "setting": f"w/o {gname}",
-                "MAE": mae, "MAPE_%": mape_v, "n_val": nval,
-            })
+            rows.append(
+                {
+                    "store_nbr": int(store),
+                    "family": str(fam),
+                    "setting": f"w/o {gname}",
+                    "MAE": mae,
+                    "MAPE_%": mape_v,
+                    "n_val": nval,
+                }
+            )
         # обновляем postfix скорости/ETA
         elapsed = max(time.perf_counter() - t0, 1e-6)
         speed = idx / elapsed
-        eta = max(total_pairs - idx, 0) / speed if speed > 0 else float('inf')
+        eta = max(total_pairs - idx, 0) / speed if speed > 0 else float("inf")
         bar.set_postfix_str(f"{speed:.2f} pair/s, ETA {eta:.1f}s")
 
     out = pd.DataFrame(rows)
