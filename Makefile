@@ -26,6 +26,7 @@ SHELL := /bin/bash
 
 # Параметры
 MLFLOW_PORT ?= 5000
+DOCKER_PROJECT_NAME ?= azs-retail
 
 # Показать справку по всем командам
 help: ## Показать справку по всем командам
@@ -143,7 +144,11 @@ ui: env
 	$(PY) -m streamlit run ui/dashboard.py
 
 docker: env
-	docker compose up --build
+	@if [ ! -f configs/.env ]; then \
+	  echo "# auto-generated placeholder" > configs/.env; \
+	  echo "INFO: создан пустой configs/.env (заполните при необходимости)"; \
+	fi
+	COMPOSE_DOCKER_CLI_BUILD=0 DOCKER_BUILDKIT=0 docker compose -p $(DOCKER_PROJECT_NAME) up --build
 
 # Быстрый демо-режим: сгенерировать игрушечные данные и обучить top-N
 demo: env
