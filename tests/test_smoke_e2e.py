@@ -2,10 +2,11 @@ from pathlib import Path
 
 import joblib
 import numpy as np
+import pytest
 from fastapi.testclient import TestClient
 from sklearn.linear_model import LinearRegression
 
-from service.app import app, MODELS_DIR
+from service.app import MODELS_DIR, app
 
 
 def _ensure_dummy_model(store: int = 2, family: str = "BEVERAGES") -> Path:
@@ -19,6 +20,7 @@ def _ensure_dummy_model(store: int = 2, family: str = "BEVERAGES") -> Path:
     return p
 
 
+@pytest.mark.integration
 def test_smoke_ready_and_models(monkeypatch):
     # Отключаем авторизацию
     monkeypatch.setenv("DISABLE_AUTH", "true")
