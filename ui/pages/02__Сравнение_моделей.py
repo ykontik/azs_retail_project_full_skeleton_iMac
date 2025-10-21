@@ -223,6 +223,33 @@ if df_pair.empty:
 tail = df_pair.tail(int(back_days)).copy()
 y_true = tail["sales"].values if "sales" in tail.columns else None
 
+st.subheader("Опции визуализации")
+opt_col1, opt_col2, opt_col3, opt_col4 = st.columns(4)
+with opt_col1:
+    normalize_minmax = st.checkbox(
+        "Нормализовать ряды (min-max)",
+        value=False,
+        help="Масштабировать значения от 0 до 1 относительно выбранного хвоста.",
+        key="viz_norm_strict",
+    )
+with opt_col2:
+    show_residuals = st.checkbox(
+        "Показать остатки (y_true − y_pred)",
+        value=False,
+        disabled=y_true is None,
+        key="viz_resid_strict",
+    )
+with opt_col3:
+    separate_axes = st.checkbox(
+        "Отдельные шкалы (подграфики)", value=False, key="viz_subplots_strict"
+    )
+with opt_col4:
+    show_quantile_band = st.checkbox(
+        "Показать коридор P50–P90 (если есть)",
+        value=False,
+        key="viz_quantiles_strict",
+    )
+
 # Per‑SKU LGBM
 base_stem = f"{int(store_sel)}__{str(family_sel).replace(' ', '_')}"
 lgb_path = MODELS_DIR / f"{base_stem}.joblib"
@@ -312,6 +339,16 @@ def agg_series(dates: pd.Series, y: np.ndarray, how: str):
     return g["date"].values, g["y"].values
 
 
+def agg_series_to_series(dates: pd.Series, y: np.ndarray | None, how: str) -> Optional[pd.Series]:
+    if y is None:
+        return None
+    x_vals, y_vals = agg_series(dates, y, how)
+    if len(x_vals) == 0:
+        return pd.Series(dtype=float)
+    index = pd.to_datetime(x_vals)
+    return pd.Series(y_vals, index=index)
+
+
 # Предсказания
 X_tail_lgb = ensure_columns(tail, feat_lgb)
 y_lgb = mdl_lgb.predict(X_tail_lgb)
@@ -350,50 +387,235 @@ if mdl_rf is not None:
     except Exception as e:
         err_rf_pred = str(e)
 
+q50_series = None
+q90_series = None
+quantile_note: Optional[str] = None
+if show_quantile_band:
+    try:
+        q50_path = MODELS_DIR / f"{base_stem}__q50.joblib"
+        q90_path = MODELS_DIR / f"{base_stem}__q90.joblib"
+        if q50_path.exists() and q90_path.exists():
+            mdl_q50 = joblib.load(q50_path)
+            mdl_q90 = joblib.load(q90_path)
+            q50_raw = mdl_q50.predict(X_tail_lgb)
+            q90_raw = mdl_q90.predict(X_tail_lgb)
+            q50_series = agg_series_to_series(tail["date"], q50_raw, period)
+            q90_series = agg_series_to_series(tail["date"], q90_raw, period)
+        else:
+            quantile_note = "Квантильные модели (P50/P90) не найдены для выбранной пары."
+    except Exception as exc:
+        quantile_note = f"Ошибка применения квантильных моделей: {exc}"
+
 
 # График
-x_dates, y_true_agg = agg_series(tail["date"], y_true, period)
-_, y_lgb_agg = agg_series(tail["date"], y_lgb, period)
-fig, ax = plt.subplots(figsize=(18, 7))
 colors = {
-    "fact": "#1f77b4",
-    "lgbm": "#ff7f0e",
-    "cat": "#2ca02c",
-    "xgb": "#d62728",
-    "xgbps": "#17becf",
-    "rf": "#9467bd",
+    "Факт": "#1f77b4",
+    "LGBM": "#ff7f0e",
+    "CatBoost (global)": "#2ca02c",
+    "XGBoost (global)": "#d62728",
+    "XGBoost (per‑SKU)": "#17becf",
+    "RandomForest (per‑SKU)": "#9467bd",
 }
-if show_fact and y_true is not None:
-    ax.plot(x_dates, y_true_agg, label="Факт", color=colors["fact"], linewidth=2.0)
+
+
+def add_series_entry(
+    entries: List[dict],
+    label: str,
+    values: Optional[np.ndarray],
+    color: str,
+    kind: str,
+) -> None:
+    series = agg_series_to_series(tail["date"], values, period)
+    if series is None or series.empty:
+        return
+    entries.append({"label": label, "series": series, "color": color, "kind": kind})
+
+
+series_entries: List[dict] = []
+actual_series = agg_series_to_series(tail["date"], y_true, period)
+if show_fact and actual_series is not None:
+    series_entries.append(
+        {"label": "Факт", "series": actual_series, "color": colors["Факт"], "kind": "actual"}
+    )
+
 if show_lgbm:
-    ax.plot(x_dates, y_lgb_agg, label="LGBM", color=colors["lgbm"], linewidth=2.0)
+    add_series_entry(series_entries, "LGBM", y_lgb, colors["LGBM"], "pred")
 if show_cb and (y_cb is not None):
-    _, y_cb_agg = agg_series(tail["date"], y_cb, period)
-    ax.plot(x_dates, y_cb_agg, label="CatBoost (global)", color=colors["cat"], linewidth=1.7)
+    add_series_entry(series_entries, "CatBoost (global)", y_cb, colors["CatBoost (global)"], "pred")
 if show_xgb and (y_xgb is not None):
-    _, y_xgb_agg = agg_series(tail["date"], y_xgb, period)
-    ax.plot(x_dates, y_xgb_agg, label="XGBoost (global)", color=colors["xgb"], linewidth=1.7)
+    add_series_entry(series_entries, "XGBoost (global)", y_xgb, colors["XGBoost (global)"], "pred")
 if show_xgbps and (y_xgbps is not None):
-    _, y_xgbps_agg = agg_series(tail["date"], y_xgbps, period)
-    ax.plot(x_dates, y_xgbps_agg, label="XGBoost (per‑SKU)", color=colors["xgbps"], linewidth=1.7)
+    add_series_entry(
+        series_entries, "XGBoost (per‑SKU)", y_xgbps, colors["XGBoost (per‑SKU)"], "pred"
+    )
 if show_rf and (y_rf is not None):
-    _, y_rf_agg = agg_series(tail["date"], y_rf, period)
-    ax.plot(x_dates, y_rf_agg, label="RandomForest (per‑SKU)", color=colors["rf"], linewidth=1.7)
+    add_series_entry(
+        series_entries, "RandomForest (per‑SKU)", y_rf, colors["RandomForest (per‑SKU)"], "pred"
+    )
 
-ax.set_title(f"Хвост {int(back_days)} дн., период: {period.lower()}")
-ax.set_xlabel("Дата/Период")
-ax.set_ylabel("Продажи")
-if ax.lines:
-    ax.legend(loc="upper right")
-ax.grid(True)
-fig.tight_layout()
-st.pyplot(fig, clear_figure=True)
-try:
-    import matplotlib.pyplot as _plt
+all_value_arrays: List[np.ndarray] = []
+for entry in series_entries:
+    if not entry["series"].empty:
+        all_value_arrays.append(entry["series"].dropna().values)
+if show_quantile_band and q50_series is not None and q90_series is not None:
+    all_value_arrays.append(q50_series.dropna().values)
+    all_value_arrays.append(q90_series.dropna().values)
 
-    _plt.close(fig)
-except Exception:
-    pass
+if all_value_arrays:
+    concat_values = np.concatenate([arr for arr in all_value_arrays if arr.size > 0])
+    if concat_values.size > 0:
+        global_min = float(np.nanmin(concat_values))
+        global_max = float(np.nanmax(concat_values))
+    else:
+        global_min, global_max = 0.0, 1.0
+else:
+    global_min, global_max = 0.0, 1.0
+global_range = global_max - global_min
+
+
+def normalize_series(series: pd.Series) -> pd.Series:
+    if not normalize_minmax or global_range <= 0:
+        return series
+    values = series.values
+    norm = (values - global_min) / global_range if global_range > 0 else np.zeros_like(values)
+    return pd.Series(norm, index=series.index)
+
+
+plot_entries: List[dict] = []
+for entry in series_entries:
+    series = entry["series"]
+    if series.empty:
+        continue
+    plot_entries.append(
+        {
+            **entry,
+            "plot_series": normalize_series(series),
+        }
+    )
+
+quantile_plot_pair: Optional[tuple[pd.Series, pd.Series]] = None
+if show_quantile_band:
+    if q50_series is not None and q90_series is not None:
+        quantile_plot_pair = (normalize_series(q50_series), normalize_series(q90_series))
+    elif quantile_note:
+        st.info(quantile_note)
+
+if not plot_entries:
+    st.warning("Нет выбранных рядов для отображения. Включите хотя бы одну серию.")
+else:
+    ylabel = "Нормализованные продажи" if normalize_minmax else "Продажи"
+    title = f"Хвост {int(back_days)} дн., период: {period.lower()}"
+
+    if separate_axes and len(plot_entries) > 0:
+        fig, axes = plt.subplots(
+            len(plot_entries),
+            1,
+            sharex=True,
+            figsize=(18, max(3.0 * len(plot_entries), 6.0)),
+        )
+        if len(plot_entries) == 1:
+            axes = [axes]
+        for idx, (ax, entry) in enumerate(zip(axes, plot_entries)):
+            series = entry["plot_series"]
+            ax.plot(
+                series.index,
+                series.values,
+                color=entry["color"],
+                linewidth=2.0,
+                label=entry["label"],
+            )
+            ax.set_ylabel(ylabel)
+            ax.set_title(entry["label"], loc="left")
+            ax.grid(True, alpha=0.3)
+            if idx == len(plot_entries) - 1:
+                ax.set_xlabel("Дата/Период")
+        target_ax = axes[0]
+        if quantile_plot_pair is not None:
+            q_df = pd.concat(quantile_plot_pair, axis=1).dropna()
+            q_df.columns = ["P50", "P90"]
+            base_index = plot_entries[0]["plot_series"].index
+            q_df = q_df.reindex(base_index).dropna()
+            if not q_df.empty:
+                target_ax.fill_between(
+                    q_df.index,
+                    q_df["P50"].values,
+                    q_df["P90"].values,
+                    color="#ffd166",
+                    alpha=0.25,
+                    label="P50–P90",
+                )
+                target_ax.legend(loc="upper right")
+        axes[0].set_title(title)
+        fig.tight_layout()
+        st.pyplot(fig, clear_figure=True)
+        plt.close(fig)
+    else:
+        fig, ax = plt.subplots(figsize=(18, 7))
+        for entry in plot_entries:
+            series = entry["plot_series"]
+            ax.plot(
+                series.index,
+                series.values,
+                label=entry["label"],
+                color=entry["color"],
+                linewidth=2.0 if entry["kind"] == "actual" else 1.7,
+            )
+        if quantile_plot_pair is not None:
+            q_df = pd.concat(quantile_plot_pair, axis=1).dropna()
+            q_df.columns = ["P50", "P90"]
+            base_index = plot_entries[0]["plot_series"].index
+            q_df = q_df.reindex(base_index).dropna()
+            if not q_df.empty:
+                ax.fill_between(
+                    q_df.index,
+                    q_df["P50"].values,
+                    q_df["P90"].values,
+                    color="#ffd166",
+                    alpha=0.25,
+                    label="P50–P90",
+                )
+        ax.set_title(title)
+        ax.set_xlabel("Дата/Период")
+        ax.set_ylabel(ylabel)
+        ax.grid(True, alpha=0.3)
+        if ax.lines:
+            ax.legend(loc="upper right")
+        fig.tight_layout()
+        st.pyplot(fig, clear_figure=True)
+        plt.close(fig)
+
+residual_entries: List[dict] = []
+if show_residuals and actual_series is not None:
+    for entry in series_entries:
+        if entry["kind"] != "pred":
+            continue
+        aligned_actual, aligned_pred = actual_series.align(entry["series"], join="inner")
+        if aligned_actual.empty or aligned_pred.empty:
+            continue
+        residual_series = aligned_actual - aligned_pred
+        residual_entries.append(
+            {"label": entry["label"], "series": residual_series, "color": entry["color"]}
+        )
+
+if residual_entries:
+    fig_res, ax_res = plt.subplots(figsize=(18, 4))
+    for entry in residual_entries:
+        ax_res.plot(
+            entry["series"].index,
+            entry["series"].values,
+            label=entry["label"],
+            color=entry["color"],
+            linewidth=1.6,
+        )
+    ax_res.axhline(0.0, color="#666666", linewidth=1.0, linestyle="--")
+    ax_res.set_title("Остатки (y_true − y_pred)")
+    ax_res.set_xlabel("Дата/Период")
+    ax_res.set_ylabel("Продажи")
+    ax_res.grid(True, alpha=0.3)
+    ax_res.legend(loc="upper right")
+    fig_res.tight_layout()
+    st.pyplot(fig_res, clear_figure=True)
+    plt.close(fig_res)
 
 
 with st.expander("Диагностика", expanded=False):
