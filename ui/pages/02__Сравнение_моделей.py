@@ -8,6 +8,8 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 
+pd.options.display.float_format = "{:.2f}".format
+
 from make_features import make_features
 
 st.set_page_config(page_title="Сравнение моделей (строгое)", layout="wide")
@@ -936,39 +938,41 @@ if rows:
         summary_filtered = summary_sorted[
             (summary_sorted[sort_metric] >= rng[0]) & (summary_sorted[sort_metric] <= rng[1])
         ]
-
-        # Top‑N после фильтрации
-        top_n = st.number_input(
-            "Показать топ‑N строк",
-            min_value=1,
-            max_value=1000,
-            value=min(50, len(summary_filtered)),
-            step=1,
-            key="sum_top_n",
-        )
-        summary_view = summary_filtered.head(int(top_n))
-        summary_display = summary_view.copy()
-        for col in cols:
-            if col in summary_display.columns:
-                summary_display[col] = summary_display[col].round(2)
-        try:
-            styled = summary_display.style.background_gradient(
-                cmap="YlGnBu", subset=[c for c in cols if ("wMAPE" in c) or ("wkMAPE" in c)]
+        count_filtered = len(summary_filtered)
+        if count_filtered == 0:
+            st.info("Нет строк, удовлетворяющих выбранному диапазону.")
+        else:
+            top_n = st.number_input(
+                "Показать топ‑N строк",
+                min_value=1,
+                max_value=min(1000, max(1, summary_sorted.shape[0])),
+                value=min(50, max(1, summary_sorted.shape[0])),
+                step=1,
+                key="sum_top_n",
             )
-            st.dataframe(styled, use_container_width=True)
-        except Exception:
-            st.dataframe(summary_display, use_container_width=True)
-        # Выгрузки
-        st.download_button(
-            f"⬇️ CSV: сводка ({'stores' if group_col=='store_nbr' else 'families'})",
-            data=summary_display.to_csv(index=False).encode("utf-8"),
-            file_name=(
-                "summary_per_store_extended.csv"
-                if group_col == "store_nbr"
-                else "summary_per_family_extended.csv"
-            ),
-            mime="text/csv",
-        )
+            summary_view = summary_filtered.head(int(top_n))
+            summary_display = summary_view.copy()
+            for col in cols:
+                if col in summary_display.columns:
+                    summary_display[col] = summary_display[col].round(2)
+            try:
+                styled = summary_display.style.background_gradient(
+                    cmap="YlGnBu", subset=[c for c in cols if ("wMAPE" in c) or ("wkMAPE" in c)]
+                )
+                st.dataframe(styled, use_container_width=True)
+            except Exception:
+                st.dataframe(summary_display, use_container_width=True)
+            # Выгрузки
+            st.download_button(
+                f"⬇️ CSV: сводка ({'stores' if group_col=='store_nbr' else 'families'})",
+                data=summary_display.to_csv(index=False).encode("utf-8"),
+                file_name=(
+                    "summary_per_store_extended.csv"
+                    if group_col == "store_nbr"
+                    else "summary_per_family_extended.csv"
+                ),
+                mime="text/csv",
+            )
 
     dim_col = "store_nbr" if dim_choice == "По магазинам" else "family"
     # CatBoost vs LGBM

@@ -6,6 +6,8 @@ from pathlib import Path
 
 import pandas as pd
 
+from train_forecast import _sanitize_family_name
+
 
 def main() -> None:
     raw = Path("data_raw")
@@ -62,7 +64,7 @@ def main() -> None:
         from pathlib import Path as _P
 
         models_dir = _P(os.environ.get("MODELS_DIR", "models"))
-        stem = f"{s}__{str(f).replace(' ', '_')}"
+        stem = f"{s}__{_sanitize_family_name(f)}"
         q50 = models_dir / f"{stem}__q50.joblib"
         q90 = models_dir / f"{stem}__q90.joblib"
         if q50.exists() and q90.exists():

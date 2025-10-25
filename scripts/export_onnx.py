@@ -22,6 +22,8 @@ from typing import List
 
 import joblib
 
+from train_forecast import _sanitize_family_name
+
 
 def _load_optional_modules():
     try:
@@ -91,7 +93,8 @@ def main() -> None:
         _load_optional_modules()
     )
 
-    stem = f"{int(args.store)}__{str(args.family).replace(' ', '_')}"
+    safe_family = _sanitize_family_name(args.family)
+    stem = f"{int(args.store)}__{safe_family}"
     model_path = Path(args.models_dir) / f"{stem}.joblib"
     if not model_path.exists():
         raise SystemExit(f"Модель не найдена: {model_path}")

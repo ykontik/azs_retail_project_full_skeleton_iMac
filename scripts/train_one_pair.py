@@ -11,10 +11,13 @@ from sklearn.metrics import mean_absolute_error
 
 ROOT = Path(__file__).resolve().parents[1]
 
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from train_forecast import _sanitize_family_name  # noqa: E402
+
 
 def _import_make_features():
-    if str(ROOT) not in sys.path:
-        sys.path.insert(0, str(ROOT))
     from make_features import make_features as _make_features  # noqa: E402
 
     return _make_features
@@ -111,7 +114,8 @@ def main():
     print(f"OK: ({args.store}, {args.family})  MAE={mae:.3f}  MAPE={mmape:.2f}%")
 
     Path(args.models_dir).mkdir(parents=True, exist_ok=True)
-    out = Path(args.models_dir) / f"{args.store}__{args.family.replace(' ', '_')}.joblib"
+    safe_family = _sanitize_family_name(args.family)
+    out = Path(args.models_dir) / f"{args.store}__{safe_family}.joblib"
     dump(model, out)
     print("Saved →", out)
 

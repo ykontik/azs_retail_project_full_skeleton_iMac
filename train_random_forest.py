@@ -24,7 +24,12 @@ from sklearn.ensemble import RandomForestRegressor
 from tqdm import tqdm
 
 from make_features import make_features
-from train_forecast import mape, pick_top_sku, _safe_metrics  # pylint: disable=protected-access
+from train_forecast import (  # pylint: disable=protected-access
+    _sanitize_family_name,
+    _safe_metrics,
+    mape,
+    pick_top_sku,
+)
 
 
 def parse_args() -> argparse.Namespace:
@@ -194,7 +199,8 @@ def main() -> None:
             }
         )
 
-        model_stem = f"{store_int}__{family_str.replace(' ', '_')}"
+        safe_family = _sanitize_family_name(family_str)
+        model_stem = f"{store_int}__{safe_family}"
         model_path = Path(args.models_dir) / f"{model_stem}__rf.joblib"
         dump(model, model_path)
         # сохраняем список признаков рядом, чтобы UI мог использовать

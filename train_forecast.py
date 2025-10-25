@@ -3,6 +3,7 @@
 import argparse
 import json
 import os
+import re
 import time
 from pathlib import Path
 from typing import List, Optional, Tuple
@@ -19,6 +20,12 @@ from make_features import make_features
 
 # Загружаем переменные окружения из .env, если он есть
 load_dotenv()
+
+
+def _sanitize_family_name(family: str) -> str:
+    cleaned = re.sub(r"[^0-9A-Za-z\-_.]+", "_", str(family))
+    cleaned = cleaned.strip("._-") or "family"
+    return cleaned
 
 
 def mape(y_true, y_pred):
@@ -387,14 +394,15 @@ def main():
                 "MAE_GAIN_vs_MA7": (ma7_mae - mae) if (ma7_mae == ma7_mae) else None,
             }
         )
-        model_stem = f"{store}__{str(fam).replace(' ', '_')}"
-        model_name = f"{model_stem}.joblib"
-        dump(model, os.path.join(args.models_dir, model_name))
+        safe_family = _sanitize_family_name(fam)
+        model_stem = f"{store}__{safe_family}"
+        model_path = Path(args.models_dir) / f"{model_stem}.joblib"
+        dump(model, model_path)
         # Дополнительно сохраняем с суффиксом для альтернативных целей (tweedie/poisson)
         if args.lgb_objective in ("tweedie", "poisson"):
             alt_name = f"{model_stem}__{args.lgb_objective}.joblib"
             try:
-                dump(model, os.path.join(args.models_dir, alt_name))
+                dump(model, Path(args.models_dir) / alt_name)
             except Exception:
                 pass
         # сохраняем список фич для модели
@@ -408,7 +416,7 @@ def main():
             feat_names = feat_cols
         try:
             with open(
-                os.path.join(args.models_dir, f"{Path(model_name).stem}.features.json"),
+                Path(args.models_dir) / f"{model_stem}.features.json",
                 "w",
                 encoding="utf-8",
             ) as f:
@@ -457,8 +465,8 @@ def main():
                     callbacks=[lgb.log_evaluation(period=0)],
                 )
                 qname = int(round(q * 100))
-                q_model_name = f"{store}__{str(fam).replace(' ', '_')}__q{qname}.joblib"
-                dump(model_q, os.path.join(args.models_dir, q_model_name))
+                q_model_path = Path(args.models_dir) / f"{store}__{safe_family}__q{qname}.joblib"
+                dump(model_q, q_model_path)
 
         # Обновляем postfix прогресса: скорость и ETA
         elapsed = max(time.perf_counter() - t0, 1e-6)

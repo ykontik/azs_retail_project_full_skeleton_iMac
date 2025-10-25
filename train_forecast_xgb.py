@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import argparse
 import os
+import re
 from pathlib import Path
 
 import numpy as np
@@ -10,6 +11,12 @@ from tqdm import tqdm
 from xgboost import XGBRegressor
 
 from make_features import make_features
+
+
+def _sanitize_family_name(family: str) -> str:
+    cleaned = re.sub(r"[^0-9A-Za-z\-_.]+", "_", str(family))
+    cleaned = cleaned.strip("._-") or "family"
+    return cleaned
 
 
 def mape(y_true, y_pred):
@@ -133,7 +140,8 @@ def main():
             enable_categorical=True,
         )
         model.fit(X_tr, y_tr, eval_set=[(X_va, y_va)], verbose=False)
-        base = f"{int(store)}__{str(fam).replace(' ', '_')}"
+        safe_family = _sanitize_family_name(fam)
+        base = f"{int(store)}__{safe_family}"
         model_path = Path(args.models_dir) / f"{base}__xgb.joblib"
         dump(model, model_path)
         # Сохраним список признаков в порядке обучения рядом с моделью
