@@ -1,7 +1,8 @@
 import json
 import os
+from functools import lru_cache
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import joblib
 import matplotlib.pyplot as plt
@@ -16,6 +17,8 @@ try:
 except Exception:  # pragma: no cover - torch опционален для LSTM
     torch = None
     nn = None
+
+_LSTM_PRED_CACHE: Dict[Tuple, np.ndarray] = {}
 
 pd.options.display.float_format = "{:.2f}".format
 
@@ -219,22 +222,23 @@ def _safe_family(family: str) -> str:
     return str(family).replace(" ", "_")
 
 
-def load_lstm_artifacts(store: int, family: str):
+@lru_cache(maxsize=128)
+def _load_lstm_artifacts_cached(store: int, family: str):
     if torch is None or nn is None:
-        return None, None, None, "PyTorch не установлен"
+        raise RuntimeError("PyTorch не установлен")
     safe_family = _safe_family(family)
     model_path = MODELS_DIR / f"{store}__{safe_family}__lstm.pt"
     meta_path = MODELS_DIR / f"{store}__{safe_family}__lstm.lstm.json"
     scaler_path = MODELS_DIR / f"{store}__{safe_family}__lstm.scaler.pkl"
     if not model_path.exists() or not meta_path.exists() or not scaler_path.exists():
-        return None, None, None, "Артефакты LSTM не найдены для пары"
+        raise FileNotFoundError("Артефакты LSTM не найдены для пары")
     try:
         meta = json.loads(meta_path.read_text(encoding="utf-8"))
     except Exception as exc:
-        return None, None, None, f"Ошибка чтения meta: {exc}"
+        raise ValueError(f"Ошибка чтения meta: {exc}") from exc
     feature_cols = meta.get("feature_columns")
     if not isinstance(feature_cols, list) or not feature_cols:
-        return None, None, None, "В meta отсутствует список признаков"
+        raise ValueError("В meta отсутствует список признаков")
     window = int(meta.get("window", 30))
     hidden_size = int(meta.get("hidden_size", 128))
     num_layers = int(meta.get("num_layers", 2))
@@ -242,19 +246,31 @@ def load_lstm_artifacts(store: int, family: str):
     try:
         scaler = joblib.load(scaler_path)
     except Exception as exc:
-        return None, None, None, f"Ошибка загрузки scaler: {exc}"
+        raise ValueError(f"Ошибка загрузки scaler: {exc}") from exc
     try:
         model = LSTMRegressor(len(feature_cols), hidden_size, num_layers, dropout)  # type: ignore[arg-type]
         state = torch.load(model_path, map_location="cpu")
         model.load_state_dict(state)
         model.eval()
     except Exception as exc:  # pragma: no cover - зависит от torch
-        return None, None, None, f"Ошибка загрузки модели LSTM: {exc}"
+        raise RuntimeError(f"Ошибка загрузки модели LSTM: {exc}") from exc
     meta_out = {
         "feature_columns": feature_cols,
         "window": window,
     }
-    return model, meta_out, scaler, None
+    return model, meta_out, scaler
+
+
+def load_lstm_artifacts(store: int, family: str):
+    try:
+        model, meta_out, scaler = _load_lstm_artifacts_cached(int(store), str(family))
+        return model, meta_out, scaler, None
+    except FileNotFoundError:
+        return None, None, None, "Артефакты LSTM не найдены для пары"
+    except RuntimeError as exc:
+        return None, None, None, str(exc)
+    except Exception as exc:
+        return None, None, None, f"Ошибка загрузки LSTM: {exc}"
 
 
 def predict_lstm_series(
@@ -271,6 +287,20 @@ def predict_lstm_series(
     prepared = prepare_lstm_features(df, feature_cols)
     if len(prepared) <= window:
         return None, "Недостаточно данных для LSTM (короткий хвост)"
+    date_min = str(df["date"].min()) if "date" in df.columns else ""
+    date_max = str(df["date"].max()) if "date" in df.columns else ""
+    cache_key = (
+        int(store),
+        str(family),
+        window,
+        len(df),
+        tuple(feature_cols),
+        date_min,
+        date_max,
+    )
+    cached = _LSTM_PRED_CACHE.get(cache_key)
+    if cached is not None:
+        return cached.copy(), None
     try:
         scaled = scaler.transform(prepared[feature_cols])
     except Exception as exc:
@@ -285,6 +315,13 @@ def predict_lstm_series(
         preds = model(x_tensor).cpu().numpy()
     full = np.full(len(prepared), np.nan, dtype=float)
     full[window:] = preds
+    if len(_LSTM_PRED_CACHE) >= 256:
+        try:
+            oldest_key = next(iter(_LSTM_PRED_CACHE))
+            _LSTM_PRED_CACHE.pop(oldest_key, None)
+        except StopIteration:
+            pass
+    _LSTM_PRED_CACHE[cache_key] = full.copy()
     return full, None
 
 
@@ -871,6 +908,17 @@ min_tail_sales = st.number_input(
 pairs_all = pairs[:max_pairs]
 if fam_filter:
     pairs_all = [p for p in pairs_all if p[1] in fam_filter]
+
+lstm_metrics_map: Dict[Tuple[int, str], pd.Series] = {}
+lstm_metrics_path = DW_DIR / "metrics_lstm.csv"
+if lstm_metrics_path.exists():
+    try:
+        df_lstm_metrics = pd.read_csv(lstm_metrics_path)
+        for _, row_lstm in df_lstm_metrics.iterrows():
+            key = (int(row_lstm["store_nbr"]), str(row_lstm["family"]))
+            lstm_metrics_map[key] = row_lstm
+    except Exception:
+        lstm_metrics_map = {}
 rows = []
 for s, f in pairs_all:
     try:
@@ -1046,60 +1094,85 @@ for s, f in pairs_all:
                     "RF_wkMAPE": round(weekly_mape_rf, 2),
                 }
             )
-        y_lstm_pair = None
-        try:
-            y_lstm_pair, lstm_pair_err = predict_lstm_series(int(s), str(f), df_p)
-            if lstm_pair_err:
-                y_lstm_pair = None
-        except Exception:
-            y_lstm_pair = None
-        if y_lstm_pair is not None:
-            mask_lstm = ~np.isnan(y_lstm_pair)
-            if np.any(mask_lstm):
-                y_true_lstm = y_t[mask_lstm]
-                y_pred_lstm = y_lstm_pair[mask_lstm]
-                mae_lstm_pair = float(np.mean(np.abs(y_true_lstm - y_pred_lstm)))
-                mape_lstm_pair = float(
-                    np.mean(
-                        np.abs(
-                            (y_true_lstm - y_pred_lstm)
-                            / np.where(y_true_lstm == 0, 1, y_true_lstm)
-                        )
-                    )
-                    * 100.0
-                )
-                wmape_lstm = float(
-                    np.sum(np.abs(y_true_lstm - y_pred_lstm)) / max(np.sum(y_true_lstm), 1.0) * 100.0
-                )
-                dfw_lstm = pd.DataFrame(
-                    {
-                        "date": df_p["date"].values[mask_lstm],
-                        "y_true": y_true_lstm,
-                        "y_pred": y_pred_lstm,
-                    }
-                )
-                gw_lstm = (
-                    dfw_lstm.set_index("date").groupby(pd.Grouper(freq="W")).sum().reset_index()
-                )
-                denom_w_lstm = np.where(
-                    gw_lstm["y_true"].values == 0, 1, gw_lstm["y_true"].values
-                )
-                weekly_mape_lstm = float(
-                    np.mean(
-                        np.abs((gw_lstm["y_true"].values - gw_lstm["y_pred"].values) / denom_w_lstm)
-                    )
-                    * 100.0
-                )
+        lstm_row = lstm_metrics_map.get((int(s), str(f)))
+        lstm_metrics_added = False
+        if lstm_row is not None:
+            try:
+                mae_lstm_pair = float(lstm_row.get("MAE", np.nan))
+                mape_lstm_pair = float(lstm_row.get("MAPE_%", np.nan))
+            except Exception:
+                mae_lstm_pair = float("nan")
+                mape_lstm_pair = float("nan")
+            if not np.isnan(mae_lstm_pair):
                 row.update(
                     {
                         "LSTM_MAE": round(mae_lstm_pair, 2),
-                        "LSTM_MAPE": round(mape_lstm_pair, 2),
                         "GAIN_LSTM_vs_LGBM_MAE": round(mae_l - mae_lstm_pair, 2),
-                        "GAIN_LSTM_vs_LGBM_MAPE": round(mape_l - mape_lstm_pair, 2),
-                        "LSTM_wMAPE": round(wmape_lstm, 2),
-                        "LSTM_wkMAPE": round(weekly_mape_lstm, 2),
                     }
                 )
+            if not np.isnan(mape_lstm_pair):
+                row.update(
+                    {
+                        "LSTM_MAPE": round(mape_lstm_pair, 2),
+                        "GAIN_LSTM_vs_LGBM_MAPE": round(mape_l - mape_lstm_pair, 2),
+                    }
+                )
+            lstm_metrics_added = True
+        if not lstm_metrics_added and show_lstm:
+            y_lstm_pair = None
+            try:
+                y_lstm_pair, lstm_pair_err = predict_lstm_series(int(s), str(f), df_p)
+                if lstm_pair_err:
+                    y_lstm_pair = None
+            except Exception:
+                y_lstm_pair = None
+            if y_lstm_pair is not None:
+                mask_lstm = ~np.isnan(y_lstm_pair)
+                if np.any(mask_lstm):
+                    y_true_lstm = y_t[mask_lstm]
+                    y_pred_lstm = y_lstm_pair[mask_lstm]
+                    mae_lstm_pair = float(np.mean(np.abs(y_true_lstm - y_pred_lstm)))
+                    mape_lstm_pair = float(
+                        np.mean(
+                            np.abs(
+                                (y_true_lstm - y_pred_lstm)
+                                / np.where(y_true_lstm == 0, 1, y_true_lstm)
+                            )
+                        )
+                        * 100.0
+                    )
+                    wmape_lstm = float(
+                        np.sum(np.abs(y_true_lstm - y_pred_lstm)) / max(np.sum(y_true_lstm), 1.0) * 100.0
+                    )
+                    dfw_lstm = pd.DataFrame(
+                        {
+                            "date": df_p["date"].values[mask_lstm],
+                            "y_true": y_true_lstm,
+                            "y_pred": y_pred_lstm,
+                        }
+                    )
+                    gw_lstm = (
+                        dfw_lstm.set_index("date").groupby(pd.Grouper(freq="W")).sum().reset_index()
+                    )
+                    denom_w_lstm = np.where(
+                        gw_lstm["y_true"].values == 0, 1, gw_lstm["y_true"].values
+                    )
+                    weekly_mape_lstm = float(
+                        np.mean(
+                            np.abs((gw_lstm["y_true"].values - gw_lstm["y_pred"].values) / denom_w_lstm)
+                        )
+                        * 100.0
+                    )
+                    row.update(
+                        {
+                            "LSTM_MAE": round(mae_lstm_pair, 2),
+                            "LSTM_MAPE": round(mape_lstm_pair, 2),
+                            "GAIN_LSTM_vs_LGBM_MAE": round(mae_l - mae_lstm_pair, 2),
+                            "GAIN_LSTM_vs_LGBM_MAPE": round(mape_l - mape_lstm_pair, 2),
+                            "LSTM_wMAPE": round(wmape_lstm, 2),
+                            "LSTM_wkMAPE": round(weekly_mape_lstm, 2),
+                        }
+                    )
         rows.append(row)
     except Exception:
         continue
@@ -1164,7 +1237,7 @@ if rows:
                 if col in summary_display.columns:
                     summary_display[col] = summary_display[col].round(2)
             try:
-                styled = summary_display.style.background_gradient(
+                styled = summary_display.style.format("{:.2f}", subset=cols).background_gradient(
                     cmap="YlGnBu", subset=[c for c in cols if ("wMAPE" in c) or ("wkMAPE" in c)]
                 )
                 st.dataframe(styled, use_container_width=True)
@@ -1194,7 +1267,10 @@ if rows:
         ).fillna(0.0)
         pv_display = pv.round(2)
         st.subheader("Heatmap: CatBoost vs LGBM (положительное = CatBoost лучше)")
-        st.dataframe(pv_display.style.background_gradient(cmap="RdYlGn"), use_container_width=True)
+        st.dataframe(
+            pv_display.style.format("{:.2f}").background_gradient(cmap="RdYlGn"),
+            use_container_width=True,
+        )
         st.download_button(
             "⬇️ CSV: heatmap CB vs LGBM",
             data=pv_display.to_csv().encode("utf-8"),
@@ -1212,7 +1288,10 @@ if rows:
         ).fillna(0.0)
         pv_display = pv.round(2)
         st.subheader("Heatmap: XGB (global) vs LGBM (положительное = XGB лучше)")
-        st.dataframe(pv_display.style.background_gradient(cmap="RdYlGn"), use_container_width=True)
+        st.dataframe(
+            pv_display.style.format("{:.2f}").background_gradient(cmap="RdYlGn"),
+            use_container_width=True,
+        )
         st.download_button(
             "⬇️ CSV: heatmap XGB vs LGBM",
             data=pv_display.to_csv().encode("utf-8"),
@@ -1230,7 +1309,10 @@ if rows:
         ).fillna(0.0)
         pv_display = pv.round(2)
         st.subheader("Heatmap: XGB per‑SKU vs LGBM (положительное = XGB per‑SKU лучше)")
-        st.dataframe(pv_display.style.background_gradient(cmap="RdYlGn"), use_container_width=True)
+        st.dataframe(
+            pv_display.style.format("{:.2f}").background_gradient(cmap="RdYlGn"),
+            use_container_width=True,
+        )
         st.download_button(
             "⬇️ CSV: heatmap XGB per‑SKU vs LGBM",
             data=pv_display.to_csv().encode("utf-8"),
@@ -1247,7 +1329,10 @@ if rows:
         ).fillna(0.0)
         pv_display = pv.round(2)
         st.subheader("Heatmap: RandomForest vs LGBM (положительное = RandomForest лучше)")
-        st.dataframe(pv_display.style.background_gradient(cmap="RdYlGn"), use_container_width=True)
+        st.dataframe(
+            pv_display.style.format("{:.2f}").background_gradient(cmap="RdYlGn"),
+            use_container_width=True,
+        )
         st.download_button(
             "⬇️ CSV: heatmap RF vs LGBM",
             data=pv_display.to_csv().encode("utf-8"),
