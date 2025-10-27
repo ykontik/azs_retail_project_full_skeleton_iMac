@@ -25,7 +25,6 @@ SHELL := /bin/bash
         batch-train-selected train-quantiles-selected export-eda model-summary shap-one
 
 # Параметры
-MLFLOW_PORT ?= 5000
 DOCKER_PROJECT_NAME ?= azs-retail
 
 # Показать справку по всем командам
