@@ -1,3 +1,4 @@
+import json
 import os
 from pathlib import Path
 from typing import List, Optional, Tuple
@@ -7,6 +8,14 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import streamlit as st
+from pandas.api.types import CategoricalDtype, is_bool_dtype, is_object_dtype
+
+try:
+    import torch
+    from torch import nn
+except Exception:  # pragma: no cover - torch опционален для LSTM
+    torch = None
+    nn = None
 
 pd.options.display.float_format = "{:.2f}".format
 
@@ -166,6 +175,119 @@ def predict_rf(model, df: pd.DataFrame, feature_list: List[str]):
     return model.predict(X)
 
 
+def prepare_lstm_features(df: pd.DataFrame, feature_list: List[str]) -> pd.DataFrame:
+    X = ensure_columns(df, feature_list).copy()
+    for col in feature_list:
+        if col not in X.columns:
+            continue
+        series = X[col]
+        if is_bool_dtype(series):
+            X[col] = series.astype("int8")
+        elif isinstance(series.dtype, CategoricalDtype):
+            X[col] = series.cat.codes.astype("int16")
+        elif is_object_dtype(series):
+            X[col] = series.astype("category").cat.codes.astype("int16")
+    return X.fillna(0.0)
+
+
+if torch is not None:
+
+    class LSTMRegressor(nn.Module):
+        def __init__(self, input_dim: int, hidden_size: int, num_layers: int, dropout: float) -> None:
+            super().__init__()
+            self.lstm = nn.LSTM(
+                input_dim,
+                hidden_size,
+                num_layers=num_layers,
+                batch_first=True,
+                dropout=dropout if num_layers > 1 else 0.0,
+            )
+            self.head = nn.Sequential(
+                nn.Linear(hidden_size, max(1, hidden_size // 2)),
+                nn.ReLU(),
+                nn.Linear(max(1, hidden_size // 2), 1),
+            )
+
+        def forward(self, x):  # type: ignore[override]
+            out, _ = self.lstm(x)
+            last = out[:, -1, :]
+            pred = self.head(last)
+            return pred.squeeze(-1)
+
+
+def _safe_family(family: str) -> str:
+    return str(family).replace(" ", "_")
+
+
+def load_lstm_artifacts(store: int, family: str):
+    if torch is None or nn is None:
+        return None, None, None, "PyTorch не установлен"
+    safe_family = _safe_family(family)
+    model_path = MODELS_DIR / f"{store}__{safe_family}__lstm.pt"
+    meta_path = MODELS_DIR / f"{store}__{safe_family}__lstm.lstm.json"
+    scaler_path = MODELS_DIR / f"{store}__{safe_family}__lstm.scaler.pkl"
+    if not model_path.exists() or not meta_path.exists() or not scaler_path.exists():
+        return None, None, None, "Артефакты LSTM не найдены для пары"
+    try:
+        meta = json.loads(meta_path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        return None, None, None, f"Ошибка чтения meta: {exc}"
+    feature_cols = meta.get("feature_columns")
+    if not isinstance(feature_cols, list) or not feature_cols:
+        return None, None, None, "В meta отсутствует список признаков"
+    window = int(meta.get("window", 30))
+    hidden_size = int(meta.get("hidden_size", 128))
+    num_layers = int(meta.get("num_layers", 2))
+    dropout = float(meta.get("dropout", 0.2))
+    try:
+        scaler = joblib.load(scaler_path)
+    except Exception as exc:
+        return None, None, None, f"Ошибка загрузки scaler: {exc}"
+    try:
+        model = LSTMRegressor(len(feature_cols), hidden_size, num_layers, dropout)  # type: ignore[arg-type]
+        state = torch.load(model_path, map_location="cpu")
+        model.load_state_dict(state)
+        model.eval()
+    except Exception as exc:  # pragma: no cover - зависит от torch
+        return None, None, None, f"Ошибка загрузки модели LSTM: {exc}"
+    meta_out = {
+        "feature_columns": feature_cols,
+        "window": window,
+    }
+    return model, meta_out, scaler, None
+
+
+def predict_lstm_series(
+    store: int,
+    family: str,
+    df: pd.DataFrame,
+) -> Tuple[Optional[np.ndarray], Optional[str]]:
+    model, meta, scaler, err = load_lstm_artifacts(store, family)
+    if err:
+        return None, err
+    assert meta is not None and model is not None and scaler is not None
+    feature_cols = list(meta["feature_columns"])
+    window = int(meta["window"])
+    prepared = prepare_lstm_features(df, feature_cols)
+    if len(prepared) <= window:
+        return None, "Недостаточно данных для LSTM (короткий хвост)"
+    try:
+        scaled = scaler.transform(prepared[feature_cols])
+    except Exception as exc:
+        return None, f"Ошибка масштабирования LSTM: {exc}"
+    sequences = []
+    for idx in range(window, len(scaled)):
+        sequences.append(scaled[idx - window : idx])
+    if not sequences:
+        return None, "Не удалось сформировать последовательности для LSTM"
+    x_tensor = torch.from_numpy(np.stack(sequences).astype(np.float32))
+    with torch.no_grad():
+        preds = model(x_tensor).cpu().numpy()
+    full = np.full(len(prepared), np.nan, dtype=float)
+    full[window:] = preds
+    return full, None
+
+
 # Список доступных per‑SKU моделей (берём базовые LGBM-файлы вида store__family.joblib)
 models = sorted(
     [
@@ -196,7 +318,7 @@ period = st.sidebar.radio("Период", ["День", "Неделя", "Меся
 
 # Переключатели линий — над графиком
 st.subheader("Показать линии")
-col_t1, col_t2, col_t3, col_t4, col_t5, col_t6 = st.columns(6)
+col_t1, col_t2, col_t3, col_t4, col_t5, col_t6, col_t7 = st.columns(7)
 with col_t1:
     show_fact = st.checkbox("Факт", value=True, key="t_fact_strict")
 with col_t2:
@@ -209,6 +331,8 @@ with col_t5:
     show_xgbps = st.checkbox("XGB per‑SKU", value=True, key="t_xgbps_strict")
 with col_t6:
     show_rf = st.checkbox("RandomForest per‑SKU", value=True, key="t_rf_strict")
+with col_t7:
+    show_lstm = st.checkbox("LSTM per‑SKU", value=False, key="t_lstm_strict")
 
 Xfull, missing = build_features()
 if Xfull is None:
@@ -389,6 +513,14 @@ if mdl_rf is not None:
     except Exception as e:
         err_rf_pred = str(e)
 
+y_lstm = None
+err_lstm_pred: Optional[str] = None
+if show_lstm:
+    try:
+        y_lstm, err_lstm_pred = predict_lstm_series(int(store_sel), str(family_sel), tail)
+    except Exception as e:  # pragma: no cover - зависит от torch
+        err_lstm_pred = str(e)
+
 q50_series = None
 q90_series = None
 quantile_note: Optional[str] = None
@@ -417,6 +549,7 @@ colors = {
     "XGBoost (global)": "#d62728",
     "XGBoost (per‑SKU)": "#17becf",
     "RandomForest (per‑SKU)": "#9467bd",
+    "LSTM (per‑SKU)": "#8c564b",
 }
 
 
@@ -453,6 +586,10 @@ if show_xgbps and (y_xgbps is not None):
 if show_rf and (y_rf is not None):
     add_series_entry(
         series_entries, "RandomForest (per‑SKU)", y_rf, colors["RandomForest (per‑SKU)"], "pred"
+    )
+if show_lstm and (y_lstm is not None):
+    add_series_entry(
+        series_entries, "LSTM (per‑SKU)", y_lstm, colors["LSTM (per‑SKU)"], "pred"
     )
 
 all_value_arrays: List[np.ndarray] = []
@@ -652,6 +789,12 @@ with st.expander("Диагностика", expanded=False):
                 "predicted": y_rf is not None,
                 "errors": rf_err or err_rf_pred,
             },
+            "lstm_per_sku": {
+                "requested": show_lstm,
+                "predicted": y_lstm is not None,
+                "errors": err_lstm_pred,
+                "torch_available": torch is not None,
+            },
         }
     )
 
@@ -664,13 +807,18 @@ def _mae_mape(y_true_arr, y_pred_arr):
         return None, None
     if len(y_true_arr) != len(y_pred_arr) or len(y_true_arr) == 0:
         return None, None
-    mae = float(np.mean(np.abs(y_true_arr - y_pred_arr)))
-    denom = np.where(y_true_arr == 0, 1, y_true_arr)
-    mape = float(np.mean(np.abs((y_true_arr - y_pred_arr) / denom)) * 100.0)
+    mask = ~np.isnan(y_true_arr) & ~np.isnan(y_pred_arr)
+    if not np.any(mask):
+        return None, None
+    y_true_f = y_true_arr[mask]
+    y_pred_f = y_pred_arr[mask]
+    mae = float(np.mean(np.abs(y_true_f - y_pred_f)))
+    denom = np.where(y_true_f == 0, 1, y_true_f)
+    mape = float(np.mean(np.abs((y_true_f - y_pred_f) / denom)) * 100.0)
     return mae, mape
 
 
-col_m1, col_m2, col_m3, col_m4, col_m5 = st.columns(5)
+col_m1, col_m2, col_m3, col_m4, col_m5, col_m6 = st.columns(6)
 mae_l, mape_l = _mae_mape(y_true, y_lgb)
 if mae_l is not None:
     with col_m1:
@@ -696,6 +844,12 @@ if mae_rf is not None:
     with col_m5:
         st.metric("RandomForest — MAE", f"{mae_rf:.2f}")
         st.metric("RandomForest — MAPE %", f"{mape_rf:.2f}%")
+
+mae_lstm, mape_lstm = _mae_mape(y_true, y_lstm)
+if mae_lstm is not None:
+    with col_m6:
+        st.metric("LSTM — MAE", f"{mae_lstm:.2f}")
+        st.metric("LSTM — MAPE %", f"{mape_lstm:.2f}%")
 
 st.markdown("---")
 st.subheader("Сводные сравнения и выгрузка")
@@ -892,6 +1046,60 @@ for s, f in pairs_all:
                     "RF_wkMAPE": round(weekly_mape_rf, 2),
                 }
             )
+        y_lstm_pair = None
+        try:
+            y_lstm_pair, lstm_pair_err = predict_lstm_series(int(s), str(f), df_p)
+            if lstm_pair_err:
+                y_lstm_pair = None
+        except Exception:
+            y_lstm_pair = None
+        if y_lstm_pair is not None:
+            mask_lstm = ~np.isnan(y_lstm_pair)
+            if np.any(mask_lstm):
+                y_true_lstm = y_t[mask_lstm]
+                y_pred_lstm = y_lstm_pair[mask_lstm]
+                mae_lstm_pair = float(np.mean(np.abs(y_true_lstm - y_pred_lstm)))
+                mape_lstm_pair = float(
+                    np.mean(
+                        np.abs(
+                            (y_true_lstm - y_pred_lstm)
+                            / np.where(y_true_lstm == 0, 1, y_true_lstm)
+                        )
+                    )
+                    * 100.0
+                )
+                wmape_lstm = float(
+                    np.sum(np.abs(y_true_lstm - y_pred_lstm)) / max(np.sum(y_true_lstm), 1.0) * 100.0
+                )
+                dfw_lstm = pd.DataFrame(
+                    {
+                        "date": df_p["date"].values[mask_lstm],
+                        "y_true": y_true_lstm,
+                        "y_pred": y_pred_lstm,
+                    }
+                )
+                gw_lstm = (
+                    dfw_lstm.set_index("date").groupby(pd.Grouper(freq="W")).sum().reset_index()
+                )
+                denom_w_lstm = np.where(
+                    gw_lstm["y_true"].values == 0, 1, gw_lstm["y_true"].values
+                )
+                weekly_mape_lstm = float(
+                    np.mean(
+                        np.abs((gw_lstm["y_true"].values - gw_lstm["y_pred"].values) / denom_w_lstm)
+                    )
+                    * 100.0
+                )
+                row.update(
+                    {
+                        "LSTM_MAE": round(mae_lstm_pair, 2),
+                        "LSTM_MAPE": round(mape_lstm_pair, 2),
+                        "GAIN_LSTM_vs_LGBM_MAE": round(mae_l - mae_lstm_pair, 2),
+                        "GAIN_LSTM_vs_LGBM_MAPE": round(mape_l - mape_lstm_pair, 2),
+                        "LSTM_wMAPE": round(wmape_lstm, 2),
+                        "LSTM_wkMAPE": round(weekly_mape_lstm, 2),
+                    }
+                )
         rows.append(row)
     except Exception:
         continue

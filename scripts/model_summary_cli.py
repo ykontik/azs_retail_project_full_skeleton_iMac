@@ -29,6 +29,21 @@ def main() -> None:
                 "size_hint": "joblib per-pair",
             }
         )
+    lstm_path = Path("data_dw/metrics_lstm.csv")
+    if lstm_path.exists():
+        try:
+            lstm_df = pd.read_csv(lstm_path)
+            rows.append(
+                {
+                    "model": "LSTM per-SKU",
+                    "MAE": float(lstm_df["MAE"].mean()),
+                    "MAPE": float(lstm_df["MAPE_%"].mean()),
+                    "size_hint": "pt per-pair",
+                }
+            )
+        except Exception:
+            pass
+
     for name, fn in [
         ("CatBoost global", Path("data_dw/metrics_global_catboost.json")),
         ("XGBoost global", Path("data_dw/metrics_global_xgboost.json")),

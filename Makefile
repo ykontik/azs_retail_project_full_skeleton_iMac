@@ -17,7 +17,7 @@ endif
 SHELL := /bin/bash
 .ONESHELL:
 
-.PHONY: help env validate etl features train api ui docker train_global train_global_xgb venv setup train_xgb train_rf train_one_xgb \
+.PHONY: help env validate etl features train api ui docker train_global train_global_xgb venv setup train_xgb train_rf train_one_xgb train_lstm \
         lint typecheck test test-cov test-fast test-unit test-integration cov all dev-setup precommit-install \
         benchmark benchmark-fast lint-fix quality demo demo-full \
         optuna shap biz-metrics clean-artifacts clean-repo impact prices-template retrain-all \
@@ -38,7 +38,8 @@ help: ## Показать справку по всем командам
 	@echo "  train        - Обучение per-SKU моделей LightGBM"
 	@echo "  train_global - Обучение глобальной CatBoost модели"
 	@echo "  train_global_xgb - Обучение глобальной XGBoost модели"
-	@echo "  train_rf       - Обучение per-SKU RandomForest"
+		@echo "  train_rf       - Обучение per-SKU RandomForest"
+		@echo "  train_lstm     - Обучение per-SKU LSTM (baseline)"
 	@echo ""
 	@echo "🚀 Запуск сервисов:"
 	@echo "  api          - Запуск FastAPI сервера"
@@ -198,6 +199,19 @@ train_rf: env
 	  --top_n_sku $${TOP_N_SKU:-50} \
 	  --top_recent_days $${TOP_RECENT_DAYS:-90} \
 	  --valid_days $${VALID_DAYS:-28}
+
+train_lstm: env
+	$(PY) experiments/train_lstm.py \
+	  --train $${RAW_DIR:-data_raw}/train.csv \
+	  --transactions $${RAW_DIR:-data_raw}/transactions.csv \
+	  --oil $${RAW_DIR:-data_raw}/oil.csv \
+	  --holidays $${RAW_DIR:-data_raw}/holidays_events.csv \
+	  --stores $${RAW_DIR:-data_raw}/stores.csv \
+	  --top_n_sku $${TOP_N_SKU:-20} \
+	  --top_recent_days $${TOP_RECENT_DAYS:-90} \
+	  --valid_days $${VALID_DAYS:-28} \
+	  --window $${WINDOW_SIZE:-30} \
+	  --epochs $${EPOCHS:-50}
 
 train_one_xgb: env
 	@if [ -z "$(STORE)" ] || [ -z "$(FAMILY)" ]; then \
