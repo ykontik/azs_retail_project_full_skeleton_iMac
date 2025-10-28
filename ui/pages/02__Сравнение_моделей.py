@@ -222,6 +222,26 @@ def _safe_family(family: str) -> str:
     return str(family).replace(" ", "_")
 
 
+def load_lstm_saved_series(store: int, family: str, tail_dates: pd.Series) -> Optional[np.ndarray]:
+    safe_family = _safe_family(family)
+    preds_path = DW_DIR / "lstm_preds" / f"{store}__{safe_family}.csv"
+    if not preds_path.exists():
+        return None
+    try:
+        df_pred = pd.read_csv(preds_path, parse_dates=["date"])
+    except Exception:
+        return None
+    if df_pred.empty or "date" not in df_pred.columns or "y_pred" not in df_pred.columns:
+        return None
+    df_pred = df_pred.sort_values("date").drop_duplicates("date", keep="last")
+    pred_series = pd.Series(df_pred["y_pred"].values, index=pd.to_datetime(df_pred["date"]))
+    tail_idx = pd.to_datetime(tail_dates.values)
+    aligned = pred_series.reindex(tail_idx)
+    if aligned.isna().all():
+        return None
+    return aligned.values.astype(float)
+
+
 @lru_cache(maxsize=128)
 def _load_lstm_artifacts_cached(store: int, family: str):
     if torch is None or nn is None:
@@ -278,6 +298,10 @@ def predict_lstm_series(
     family: str,
     df: pd.DataFrame,
 ) -> Tuple[Optional[np.ndarray], Optional[str]]:
+    if "date" in df.columns:
+        saved = load_lstm_saved_series(store, family, df["date"])
+        if saved is not None:
+            return saved, None
     model, meta, scaler, err = load_lstm_artifacts(store, family)
     if err:
         return None, err

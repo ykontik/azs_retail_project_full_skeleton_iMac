@@ -326,6 +326,8 @@ def main() -> None:
 
     Path(args.models_dir).mkdir(parents=True, exist_ok=True)
     Path(args.warehouse_dir).mkdir(parents=True, exist_ok=True)
+    preds_dir = Path(args.warehouse_dir) / "lstm_preds"
+    preds_dir.mkdir(parents=True, exist_ok=True)
 
     train = pd.read_csv(args.train, parse_dates=["date"])
     transactions = pd.read_csv(args.transactions, parse_dates=["date"])
@@ -417,6 +419,19 @@ def main() -> None:
                 "VAL_SAMPLES": len(pair_data.val_targets),
             }
         )
+
+        # Сохраним валидационные предсказания для UI/аналитики
+        pred_len = min(len(pair_data.val_dates), len(preds), len(pair_data.val_targets))
+        if pred_len > 0:
+            pred_df = pd.DataFrame(
+                {
+                    "date": pd.to_datetime(pair_data.val_dates[:pred_len]).strftime('%Y-%m-%d'),
+                    "y_true": pair_data.val_targets[:pred_len],
+                    "y_pred": preds[:pred_len],
+                }
+            )
+            pred_path = preds_dir / f"{store_int}__{safe_family}.csv"
+            pred_df.to_csv(pred_path, index=False)
 
     if not metrics_rows:
         print("Не удалось собрать метрики LSTM.")

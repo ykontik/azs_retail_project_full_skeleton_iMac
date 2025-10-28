@@ -53,7 +53,8 @@ subtitle: "От данных до продакшена за 10 минут"
 
 - Baseline: Naive lag‑7, Moving Average(7)
 - Основная: per‑SKU LightGBM (l1/tweedie/poisson)
-- Альтернативы: Global CatBoost, Global/Per‑SKU XGBoost
+- Альтернативы: Global CatBoost, Global/Per‑SKU XGBoost, per‑SKU RandomForest
+- R&D baseline: per‑SKU LSTM (окно 30, hidden 128, 2 слоя) — демонстрация нейросетевого подхода для будущего ансамбля
 - Валидация: time‑series CV, окна 14–28 дней
 
 ---
@@ -62,13 +63,15 @@ subtitle: "От данных до продакшена за 10 минут"
 
 - Optuna: подбор num_leaves, learning_rate, n_estimators, max_depth, regularization
 - SHAP: summary/top‑features для интерпретации
+- LSTM: отдельный скрипт (`experiments/train_lstm.py`) с сохранением весов, скейлеров и валидационных предсказаний для UI
 
 ---
 
 ## 7) Результаты (качество)
 
-- MAE/MAPE/RMSE vs baseline (tail 28)
-- Прирост: MAE_GAIN_vs_NAIVE, MAE_GAIN_vs_MA(7)
+- MAE/MAPE/RMSE vs baseline (tail 28) — `data_dw/metrics_per_sku.csv`
+- Прирост: MAE_GAIN_vs_NAIVE, MAE_GAIN_vs_MA(7); сравнение с RF/XGB/CatBoost
+- LSTM baseline: MAPE >> 100% (показываем как proof-of-concept, требуются гипер-подбор и регуляризация)
 - Квантили: покрытие P50/P90
 
 ---
