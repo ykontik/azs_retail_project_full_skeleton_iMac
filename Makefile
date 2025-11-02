@@ -474,5 +474,9 @@ slides-html:
 
 slides-pdf:
 	@echo "Building PDF slides (Pandoc Beamer; requires LaTeX)..."
+	@if ! command -v pdflatex >/dev/null 2>&1; then \
+	  echo "pdflatex не найден. Установите LaTeX (например, MacTeX/TinyTeX) или используй make slides-html и экспортируй PDF из браузера."; \
+	  exit 47; \
+	fi
 	pandoc -t beamer -V aspectratio=169 -o docs/slides.pdf docs/slides.md
 	@echo "OK: docs/slides.pdf"

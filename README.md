@@ -210,6 +210,7 @@ python scripts/export_onnx.py --store 1 --family AUTOMOTIVE --quantize
 - **Model Card:** `docs/MODEL_CARD.md`
 - **Чек-лист презентации:** `PRESENTATION_CHECKLIST.md`
 - **Слайды (10 мин):** `docs/slides.md` → `make slides-html` или `make slides-pdf`
+- **PDF:** `make slides-pdf` (требуется LaTeX/pdflatex). Если LaTeX нет, используйте `make slides-html` и экспортируйте из браузера.
 - **Colab демо:** `notebooks/colab_demo.ipynb` (замените `REPO_URL` и запустите по шагам)
 
 ## 🔌 API Эндпоинты

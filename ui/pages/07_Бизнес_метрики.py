@@ -162,13 +162,13 @@ rop = daily_mean * L + safety_stock
 
 colA, colB, colC, colD = st.columns(4)
 with colA:
-    st.metric("Средний спрос/день", f"{daily_mean:.3f} шт.")
+    st.metric("Средний спрос/день", f"{daily_mean:.2f} шт.")
 with colB:
     st.metric("MAPE", f"{mape_pct:.2f}%")
 with colC:
-    st.metric("Safety Stock", f"{safety_stock:.1f} шт.")
+    st.metric("Safety Stock", f"{safety_stock:.2f} шт.")
 with colD:
-    st.metric("Reorder Point", f"{rop:.1f} шт.")
+    st.metric("Reorder Point", f"{rop:.2f} шт.")
 
 # Денежные оценки: упущенная маржа (недопоставка) и хранение (излишки)
 expected_under_units = (1 - float(service_level)) * daily_mean * L
