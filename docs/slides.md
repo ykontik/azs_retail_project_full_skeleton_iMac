@@ -32,9 +32,9 @@ subtitle: "От данных до продакшена за 10 минут"
 - Промо: значимое влияние на продажи
 - Разная дисперсия по магазинам и семействам
 
-![](docs/eda_seasonality_dow.png)
-![](docs/eda_seasonality_month.png)
-![](docs/eda_promo_effect.png)
+![](eda_seasonality_dow.png)
+![](eda_seasonality_month.png)
+![](eda_promo_effect.png)
 
 
 ---
